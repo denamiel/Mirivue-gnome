@@ -1,51 +1,48 @@
-# Vérifications de la préparation 0.6.22
+# Vérifications de Mirivue GNOME 0.6.22
 
-Base : archive GNOME 0.6.21 fournie. Date de préparation : 30 octobre 2026.
+Base : sources GNOME 0.6.21. Préparation : 30 octobre 2026.
 
-## Vérifié localement
+## Validation GitHub réussie
 
-- Compilation syntaxique du code Python.
-- Cohérence de la version entre Python, la recette RPM et l'ancien installateur.
-- Trois nouveaux tests : version et lanceur portable, sauvegarde de l'ancien
-  lanceur avec conservation des réglages, conservation d'un lanceur personnalisé.
-- Construction de la wheel Python et présence des fichiers JSON, aides, icônes,
-  fichier desktop et script de transition.
-- Installation de cette wheel dans un dossier temporaire et appel du lanceur
-  `mirivue-gnome --version` depuis l'extérieur des sources : 0.6.22.
-- Création de l'archive source et du PKGBUILD avec son empreinte ; contrôle des
-  inclusions et des scripts shell.
-- Workflow YAML chargé et dépendances entre jobs vérifiées.
+Commit testé : a71d653032b2b02e6ae9187d34411fcbda9b2b51.
 
-## Limites de cette vérification
+Exécution :
+https://github.com/denamiel/Mirivue-gnome/actions/runs/40974896412
 
-La suite complète lancée initialement ici indique 97 tests exécutés, dont sept erreurs dues
-à l'absence de PyGObject (`gi`) et un test ignoré. Aucune autre erreur ou échec
-n'a été observé ; cela ne valide pas les tests GTK qui n'ont pas pu être chargés.
+Les quatre jobs ont réussi :
 
-L'environnement local ne dispose pas de `rpmbuild`, `makepkg`, GTK/PyGObject ni
-d'un moteur de conteneurs. Les RPM et le paquet Arch n'ont donc pas encore été
-construits ici. Les workflows définissent ces constructions ainsi que leurs
-tests d'installation et de fenêtre réelle ; ils ne seront exécutés qu'une fois
-le dépôt GitHub créé et les fichiers envoyés.
+- Ubuntu 24.04 : suite complète de 137 tests, construction Python et fenêtre GTK réelle sous Xvfb.
+- Fedora 44 : construction du RPM, tests, installation du paquet et ouverture de la fenêtre hors des sources.
+- Fedora 45 : mêmes contrôles de construction, installation et fenêtre.
+- Arch / CachyOS : construction avec makepkg, tests, installation et lancement hors des sources.
 
-## Premiers résultats GitHub
+Les tests emploient des répertoires temporaires pour les réglages. Le rendu Cairo
+est imposé uniquement dans les conteneurs sans GPU. D-Bus est lancé après Xvfb
+afin que les services de test connaissent l'affichage virtuel.
 
-Le dépôt `denamiel/Mirivue-gnome` a été créé par le propriétaire puis les sources
-y ont été importées. Au commit dbd50cdb317874ba215281f1dbb6155bcaaf2854,
-135 tests ont réussi sur Ubuntu 24.04 avec GTK, ainsi que le test de fenêtre.
-Le paquet Arch a été construit, installé et lancé avec succès.
+## Défauts corrigés pendant la préparation
 
-Les premières constructions Fedora ont relevé un fichier compilé manquant
-dans la liste du RPM ; leur journal a aussi révélé une exception dans le menu
-des segments masqués de la barre de chemin. Les deux défauts sont corrigés.
-Le contrôle de fenêtre refuse désormais les exceptions de callbacks au lieu
-de considérer le seul affichage initial comme un succès.
+- Ajout des fichiers Python compilés du script de transition à la liste du RPM.
+- Correction du menu des segments masqués dans la barre de chemin.
+- Le test de fenêtre détecte maintenant les exceptions Python des callbacks.
+- Adaptation de l'installation dans les images Fedora minimales lorsque GVfs
+  requiert udev et que l'image contient systemd-standalone-tmpfiles.
+- Construction Python avec licence SPDX et textes de licence embarqués.
 
-## Publication
+## Licence et publication
 
-La licence choisie est GPL-3.0-or-later. Aucun projet COPR, webhook ou paquet
-AUR n'a encore été ajouté. Les constructions finales doivent réussir avant
-de publier un tag ou une version installable.
+La licence choisie est GPL-3.0-or-later. Elle figure dans LICENSE, COPYING,
+REUSE.toml, les métadonnées Python, les recettes Fedora et Arch et la page À propos.
 
-Cette version est une préparation de distribution, pas une déclaration de
-stabilité ou d'identité visuelle intégrale avec Nautilus.
+Les sources sont dans https://github.com/denamiel/Mirivue-gnome.
+Les paquets de test sont disponibles dans les artefacts de l'exécution GitHub.
+
+Aucun projet COPR, webhook ou paquet AUR n'a encore été ajouté et aucun tag de
+version n'a été publié. Ces étapes de distribution restent à configurer.
+
+## Limites
+
+Ces contrôles ne constituent pas une comparaison visuelle intégrale avec
+Nautilus, ni une validation sur tous les matériels, supports amovibles et
+serveurs réseau. Une fenêtre sous Xvfb valide le lancement GTK, pas chaque
+interaction dans une session GNOME physique.
