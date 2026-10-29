@@ -62,7 +62,7 @@ l'installation gérée par DNF ou pacman.
 ## Tests automatiques
 
 ```bash
-dbus-run-session -- xvfb-run -a bash packaging/verify.sh
+xvfb-run -a dbus-run-session -- bash packaging/verify.sh
 ```
 
 Ce contrôle nécessite les dépendances natives GTK installées. Il utilise des

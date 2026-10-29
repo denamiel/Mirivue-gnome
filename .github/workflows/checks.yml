@@ -19,7 +19,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y python3-gi python3-gi-cairo python3-cairo python3-pil python3-mutagen python3-setuptools python3-wheel python3-build python3-installer python3-venv python3-pip gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-gnomedesktop-4.0 gir1.2-poppler-0.18 xvfb xauth dbus-x11 desktop-file-utils fonts-dejavu-core
       - name: Tests et ouverture de la fenêtre en environnement isolé
-        run: dbus-run-session -- xvfb-run -a bash packaging/verify.sh
+        run: xvfb-run -a dbus-run-session -- bash packaging/verify.sh
       - name: Construire et contrôler la distribution Python
         run: |
           /usr/bin/python3 -m build
@@ -33,6 +33,8 @@ jobs:
       matrix:
         fedora: ['44', '45']
     container: fedora:${{ matrix.fedora }}
+    env:
+      GSK_RENDERER: cairo
     steps:
       - name: Préparer la construction Fedora
         run: dnf -y install git rpm-build python3 dnf5-plugins
@@ -44,10 +46,10 @@ jobs:
           rpmbuild -ba --define "_sourcedir $PWD/packaging/fedora" --define "_rpmdir $PWD/dist/rpms" --define "_srcrpmdir $PWD/dist/srpms" packaging/fedora/mirivue-gnome.spec
       - name: Installer et contrôler le lanceur du RPM
         run: |
-          dnf -y install dist/rpms/noarch/*.rpm
+          dnf -y install --allowerasing dist/rpms/noarch/*.rpm
           cd /tmp
           test "$(mirivue-gnome --version)" = "$(rpm -q --qf '%{VERSION}' mirivue-gnome)"
-          dbus-run-session -- xvfb-run -a timeout 40 mirivue-gnome --window-smoke-test
+          xvfb-run -a dbus-run-session -- timeout 40 mirivue-gnome --window-smoke-test
       - name: Vérifier si les paquets peuvent être rendus disponibles
         run: python3 -c 'import json; print("MIRIVUE_PUBLICATION_READY=" + str(json.load(open("packaging/release.json"))["publication_ready"]).lower())' >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@v4
@@ -60,6 +62,8 @@ jobs:
     name: Paquet Arch / CachyOS
     runs-on: ubuntu-latest
     container: archlinux:base-devel
+    env:
+      GSK_RENDERER: cairo
     steps:
       - name: Préparer Arch
         run: |
@@ -75,7 +79,7 @@ jobs:
           pacman -U --noconfirm dist/aur/*.pkg.tar.zst
           cd /tmp
           mirivue-gnome --version
-          dbus-run-session -- xvfb-run -a timeout 40 mirivue-gnome --window-smoke-test
+          xvfb-run -a dbus-run-session -- timeout 40 mirivue-gnome --window-smoke-test
       - name: Vérifier si les paquets peuvent être rendus disponibles
         run: python3 -c 'import json; print("MIRIVUE_PUBLICATION_READY=" + str(json.load(open("packaging/release.json"))["publication_ready"]).lower())' >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@v4

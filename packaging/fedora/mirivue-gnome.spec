@@ -60,7 +60,7 @@ tabs, media information, previews and background file operations.
 desktop-file-validate %{buildroot}%{_datadir}/applications/org.pdenams.Mirivue.Gtk4.desktop
 
 %check
-dbus-run-session -- xvfb-run -a bash packaging/verify.sh
+xvfb-run -a dbus-run-session -- bash packaging/verify.sh
 
 %files -f %{pyproject_files}
 %doc CHANGELOG.md README.md
