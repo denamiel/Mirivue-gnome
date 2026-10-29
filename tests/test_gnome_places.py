@@ -161,6 +161,36 @@ class BreadcrumbTests(unittest.TestCase):
         self.assertEqual(breadcrumb_visible_start(widths, 220, 42), 2)
         self.assertEqual(breadcrumb_visible_start(widths, 130, 42), 3)
 
+    def test_hidden_path_segments_create_a_working_native_menu(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from gi.repository import Gtk
+        from mirivue_gtk4.navigation import LocationBar
+
+        Gtk.init()
+        opened = []
+        class NarrowBox(Gtk.Box):
+            def get_width(self):
+                return 100
+
+        crumbs = NarrowBox()
+        buttons = [Gtk.Button(label=f'Dossier {i}') for i in range(3)]
+        segments = [(button, Path('/tmp') / str(i), f'Dossier {i}', Gtk.Label(label='/'))
+                    for i, button in enumerate(buttons)]
+        for button, _path, _label, _separator in segments:
+            crumbs.append(button)
+        fake = SimpleNamespace(_syncing_overflow=False, mode='buttons', crumbs=crumbs,
+                               _crumb_buttons=segments, menu_button=Gtk.MenuButton(),
+                               _overflow_button=None, _overflow_key=None,
+                               pane=SimpleNamespace(open=opened.append))
+        with patch('mirivue_gtk4.navigation.breadcrumb_visible_start', return_value=2):
+            self.assertFalse(LocationBar.sync_overflow(fake))
+        menu = fake._overflow_button.get_popover().get_child()
+        self.assertEqual(menu.get_first_child().get_label(), 'Dossier 0')
+        self.assertEqual(menu.get_last_child().get_label(), 'Dossier 1')
+        menu.get_last_child().emit('clicked')
+        self.assertEqual(opened, [Path('/tmp/1')])
+
 
 class PathBarMenuTests(unittest.TestCase):
     def test_current_folder_menu_matches_native_file_manager_actions(self):

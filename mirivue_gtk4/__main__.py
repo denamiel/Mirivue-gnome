@@ -68,8 +68,19 @@ if '--window-smoke-test' in sys.argv:
             GLib.idle_add(lambda: (window.shutdown(), False)[1])
 
         app.connect('window-added', lambda _app, window: window.connect('map', lambda *_: mapped(window)))
-        result = app.run([])
-        raise SystemExit(0 if result == 0 and succeeded[0] else 1)
+        callback_errors = []
+        previous_hook = sys.excepthook
+
+        def record_callback_error(type_, value, traceback):
+            callback_errors.append(value)
+            previous_hook(type_, value, traceback)
+
+        sys.excepthook = record_callback_error
+        try:
+            result = app.run([])
+        finally:
+            sys.excepthook = previous_hook
+        raise SystemExit(0 if result == 0 and succeeded[0] and not callback_errors else 1)
 if '--diagnostic' in sys.argv:
     from .core.diagnostics import diagnostic_report
 

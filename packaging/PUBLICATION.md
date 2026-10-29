@@ -1,15 +1,13 @@
 # Publication de Mirivue GNOME
 
-## 1. Confirmer la licence
+## 1. Licence retenue
 
-Choisir la licence avec le titulaire des droits ; ajouter le texte de licence
-dans `LICENSE` et les éventuelles mentions des parties tierces. Renseigner
-`license_spdx` et `publication_ready` dans `packaging/release.json`.
-Remplacer le marqueur provisoire dans le `.spec` et `PKGBUILD.in`, installer la
-licence dans le paquet (`%license LICENSE` pour Fedora, `install -Dm644 LICENSE`
-dans `/usr/share/licenses/mirivue-gnome/LICENSE` pour Arch).
+Le titulaire a délégué le choix de licence. GPL-3.0-or-later a été retenue
+pour cette édition GNOME. Les fichiers LICENSE et COPYING, les métadonnées
+Python et les recettes Fedora et Arch contiennent cette licence.
+La page À propos utilise l'affichage légal natif de libadwaita.
 
-Le contrôle suivant doit alors réussir :
+Le contrôle de cohérence doit réussir avant publication :
 
 ```bash
 /usr/bin/python3 packaging/check_release.py --require-license

@@ -182,7 +182,7 @@ class LocationBar(Gtk.Box):
             if key != self._overflow_key:
                 pop = Gtk.Popover()
                 box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-                for _button, path, label in hidden:
+                for _button, path, label, _separator in hidden:
                     choice = Gtk.Button(label=label)
                     choice.add_css_class('flat')
                     if path is not None:

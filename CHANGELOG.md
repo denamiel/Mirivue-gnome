@@ -7,7 +7,9 @@
 - Lanceur de paquet portable : suppression du chemin personnel `/home/p`.
 - Tests GitHub Actions pour GTK4, la fenêtre réelle, Fedora 44/45 et Arch ; publication d'une version seulement après succès des contrôles.
 - Transition explicite et réversible de l'ancien lanceur personnel, sans modifier les réglages.
-- Licence publique à confirmer avant activation de COPR ou publication des versions. Aucun dépôt ni webhook n'est créé par les seuls fichiers de préparation.
+- GPL-3.0-or-later retenue pour l'édition GNOME, avec texte de licence, métadonnées des paquets et affichage légal natif dans À propos.
+- Correction du menu de débordement de la barre de chemin lorsqu'il masque des segments, et contrôle des exceptions des callbacks dans le test de fenêtre.
+- La recette Fedora inclut les fichiers compilés générés pour le script de transition.
 
 ## 0.6.21
 

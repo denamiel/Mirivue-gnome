@@ -2801,6 +2801,8 @@ class MirivueWindow(Adw.ApplicationWindow):
             application_name='Mirivue',
             version=__version__,
             developer_name='pdenams',
+            copyright='© 2026 Mirivue contributors',
+            license_type=Gtk.License.GPL_3_0,
             comments=tr('Gestionnaire local de fichiers multimédias pour GNOME.'),
         ).present(self)
 

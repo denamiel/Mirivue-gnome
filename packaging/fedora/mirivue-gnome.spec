@@ -2,14 +2,13 @@ Name:           mirivue-gnome
 Version:        0.6.22
 Release:        1%{?dist}
 Summary:        GNOME file and media manager with two panes
-# This placeholder must be replaced with the author's confirmed licence.
-License:        LicenseRef-Mirivue-Pending
+License:        GPL-3.0-or-later
 URL:            https://github.com/denamiel/Mirivue-gnome
 Source0:        %{url}/releases/download/v%{version}/%{name}-%{version}.tar.gz
 BuildArch:      noarch
 
 BuildRequires:  python3-devel
-BuildRequires:  python3-setuptools
+BuildRequires:  python3-setuptools >= 77.0.3
 BuildRequires:  python3-wheel
 BuildRequires:  pyproject-rpm-macros
 BuildRequires:  desktop-file-utils
@@ -65,13 +64,13 @@ dbus-run-session -- xvfb-run -a bash packaging/verify.sh
 
 %files -f %{pyproject_files}
 %doc CHANGELOG.md README.md
-%doc packaging/LICENCE-A-CONFIRMER.md
+%license LICENSE COPYING
 %{_bindir}/mirivue-gnome
 %{_datadir}/applications/org.pdenams.Mirivue.Gtk4.desktop
 %{_datadir}/icons/hicolor/scalable/apps/org.pdenams.Mirivue.Gtk4.svg
 %{_datadir}/icons/hicolor/256x256/apps/org.pdenams.Mirivue.Gtk4.png
-%{_datadir}/mirivue-gnome/transition_user_install.py
+%{_datadir}/mirivue-gnome/
 
 %changelog
 * Fri Oct 30 2026 Mirivue contributors - 0.6.22-1
-- Prepare independent GTK4 packages; publication awaits licence confirmation.
+- Prepare independent GTK4 packages under GPL-3.0-or-later.

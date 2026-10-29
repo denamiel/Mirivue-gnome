@@ -19,6 +19,9 @@ def check(path):
         desktop = next(n for n in names if n.endswith('/share/applications/org.pdenams.Mirivue.Gtk4.desktop'))
         if b'Exec=mirivue-gnome %U' not in wheel.read(desktop):
             raise ValueError('Lanceur non portable dans la wheel')
+        for document in ('LICENSE', 'COPYING'):
+            if not any('.dist-info/' in name and name.endswith('/' + document) for name in names):
+                raise ValueError(f'Licence absente de la wheel : {document}')
         print(f'{Path(path).name} : ressources et lanceur OK')
 
 

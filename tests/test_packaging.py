@@ -17,6 +17,10 @@ class PackagingTests(unittest.TestCase):
     def test_package_versions_and_portable_desktop_entry(self):
         subprocess.run([sys.executable, str(ROOT / 'packaging/check_release.py')], check=True, capture_output=True)
 
+    def test_confirmed_licence_allows_release_validation(self):
+        subprocess.run([sys.executable, str(ROOT / 'packaging/check_release.py'), '--require-license'],
+                       check=True, capture_output=True)
+
     def test_old_launcher_is_backed_up_without_touching_settings(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

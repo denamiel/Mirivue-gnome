@@ -1,0 +1,8 @@
+version = 1
+
+[[annotations]]
+path = ["mirivue_gtk4/**", "tests/**", "packaging/**", "icons/**", "docs/**",
+        ".github/**", ".copr/**", "*.md", "*.sh", "*.desktop", "pyproject.toml", "MANIFEST.in", ".gitignore", "COPYING", "REUSE.toml"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Mirivue contributors"
+SPDX-License-Identifier = "GPL-3.0-or-later"

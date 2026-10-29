@@ -11,9 +11,12 @@ Les fichiers de paquet, le lanceur installé et les tests automatiques sont prê
 à être vérifiés par les outils de construction Fedora et Arch.
 Ce dépôt ne doit pas être présenté comme une version stable déjà validée.
 
-**Publication en attente de confirmation de la licence.** La source 0.6.21
-ne contient pas de texte de licence explicite. Voir
-[packaging/LICENCE-A-CONFIRMER.md](packaging/LICENCE-A-CONFIRMER.md).
+## Licence
+
+Mirivue GNOME est publié sous **GPL-3.0-or-later** : GNU GPL version 3 ou toute
+version ultérieure. Voir [COPYING](COPYING) pour la déclaration du projet et
+[LICENSE](LICENSE) pour le texte intégral. Les bibliothèques installées
+séparément conservent leurs licences propres.
 
 ## Dépendances
 

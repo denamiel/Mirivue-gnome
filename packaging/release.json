@@ -1,6 +1,6 @@
 {
   "repository": "denamiel/Mirivue-gnome",
   "package": "mirivue-gnome",
-  "license_spdx": null,
-  "publication_ready": false
+  "license_spdx": "GPL-3.0-or-later",
+  "publication_ready": true
 }

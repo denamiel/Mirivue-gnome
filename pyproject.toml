@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61", "wheel"]
+requires = ["setuptools>=77.0.3", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,6 +8,8 @@ dynamic = ["version"]
 description = "Gestionnaire de fichiers et de médias pour GNOME (GTK4, libadwaita)"
 requires-python = ">=3.11"
 dependencies = ["PyGObject>=3.46", "Pillow", "mutagen"]
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE", "COPYING"]
 
 [project.scripts]
 mirivue-gnome = "mirivue_gtk4.launcher:main"
