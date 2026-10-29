@@ -1,0 +1,7 @@
+include CHANGELOG.md STABILISATION-GNOME.md
+include org.pdenams.Mirivue.Gtk4.desktop
+recursive-include icons *.svg *.png
+recursive-include packaging *.py *.sh *.spec *.in *.md *.json
+recursive-include tests *.py
+include .copr/Makefile
+recursive-include .github *.yml

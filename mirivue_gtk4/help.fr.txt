@@ -1,0 +1,20 @@
+Parcourir les fichiers
+Chaque panneau possède son dossier, son tri, sa recherche et ses onglets. « Deux panneaux » affiche ou masque le second panneau. F3 bascule cette vue. Ctrl+T ouvre un onglet ; Ctrl+W ferme l’onglet, ou la fenêtre s’il est seul. Ctrl+Page haut / bas change d’onglet. Alt+Début ouvre le dossier personnel ; Ctrl+D ajoute le dossier courant aux signets. Ctrl+L permet de saisir un emplacement. Un double-clic sur un espace vide remonte au dossier parent.
+
+Vues et colonnes
+Ctrl++ / Ctrl+- ajuste la taille des icônes et Ctrl+0 la rétablit. F5 ou Ctrl+R actualise le dossier. « Vue en liste » affiche les fichiers sous forme de lignes ; « Vue en grille » les présente sous forme d’icônes. Cliquez sur un titre de colonne pour trier ou faites-le glisser pour modifier son ordre. « Colonnes… » permet de choisir leur visibilité et leur profil. Les colonnes visibles sont partagées par les deux panneaux, tandis que leur ordre peut être configuré séparément. La taille des dossiers indique d’abord le nombre d’éléments directs ; le calcul facultatif de la taille totale s’effectue en arrière-plan.
+
+Outils multimédias
+Ouvrez « Outils multimédias… » pour consulter les informations, modifier les métadonnées, tester la lecture ou organiser une sélection. Les commandes s’appliquent à la sélection du panneau actif. Le débit vidéo affiché vient des métadonnées déclarées par le média ; aucun calcul exhaustif ni note de qualité subjective ne sont proposés. La durée totale des dossiers est disponible dans la rubrique Organisation. Les doublons exacts sont recherchés récursivement dans le dossier choisi.
+
+Copier et déplacer
+Ctrl+C copie, Ctrl+X coupe et Ctrl+V colle dans le dossier ouvert du panneau actif. Un clic droit sur un dossier unique propose « Coller dans ce dossier ». Le presse-papiers de fichiers échange les opérations Copier/Couper avec GNOME Fichiers. En cas de nom déjà présent, choisissez de renommer, d’ignorer ou de remplacer explicitement des fichiers ; les dossiers existants ne sont pas remplacés. Les opérations se font en arrière-plan. « Opérations… » affiche la file, les résultats et les erreurs. Le pied du panneau « Emplacements » indique la sélection et la progression ; il contient une icône discrète à trois points, avec l’infobulle « Opérations ». Le bouton d’annulation apparaît à côté uniquement pendant une analyse. Si ce panneau se replie dans une fenêtre étroite, un accès aux opérations et une progression compacte restent visibles dans l’en-tête.
+
+Aperçu
+F9 affiche ou masque l’aperçu. Le damier indique les zones transparentes des images ; les PDF sont affichés sur une page blanche. La barre d’espace fait de même lorsqu’un fichier est sélectionné dans la liste ou la grille. Un clic droit sur le lecteur lance ou met en pause ; le double-clic passe en plein écran ou en revient. Sur les images, la molette verticale zoome et l’horizontale passe à une autre image. Sur les vidéos et les sons, la molette ne règle ni le volume ni la position de lecture. En plein écran, les flèches parcourent la sélection. Le son commence à zéro volume.
+
+Emplacements et confidentialité
+Les signets de dossiers sont partagés avec GNOME Files et se gèrent depuis la section « Signets » du panneau latéral. « Favoris » regroupe les fichiers marqués comme favoris dans GNOME. Les fichiers, analyses et collections restent locaux. F1 ouvre l’aide, Ctrl+, les Préférences et Ctrl+? la liste des raccourcis. Alt+Entrée ouvre les propriétés. Les Préférences permettent de désactiver les médias récents et l’historique des opérations ou de lecture.
+
+Création et propriétés
+Le menu du dossier propose « Créer un nouveau » pour créer un dossier ou un fichier texte sans écraser un élément existant. « Propriétés » affiche les informations générales et les droits Unix d’un élément local ; les changements sont vérifiés après application. Un lien symbolique n’est pas modifié. Alt+Maj+F4 ouvre un terminal dans le dossier courant si un terminal compatible est installé.

@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Mirivue (GNOME)
+Comment=Manage files and media with GTK and GNOME services
+Comment[fr]=Gérer les fichiers et médias avec GTK et les services GNOME
+Exec=mirivue-gnome %U
+Icon=org.pdenams.Mirivue.Gtk4
+StartupNotify=true
+Terminal=false
+StartupWMClass=org.pdenams.Mirivue.Gtk4
+Categories=System;FileTools;GTK;
+MimeType=inode/directory;
+Keywords=files;file manager;media;video;audio;image;photo;
+Keywords[fr]=fichiers;gestionnaire de fichiers;médias;vidéo;audio;image;photo;

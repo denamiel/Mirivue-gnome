@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <title>Proposition d’icône Mirivue GNOME</title>
+  <desc>Un dossier turquoise contenant une image, avec une onde audio et un bouton de lecture vidéo.</desc>
+  <defs>
+    <linearGradient id="back" x1="0" y1="0" x2="0.9" y2="1">
+      <stop stop-color="#4d9fe2"/>
+      <stop offset="1" stop-color="#2563a3"/>
+    </linearGradient>
+    <linearGradient id="picture" x1="0" y1="0" x2="0.8" y2="1">
+      <stop stop-color="#5aabf0"/>
+      <stop offset="1" stop-color="#3273cd"/>
+    </linearGradient>
+    <linearGradient id="front" x1="0" y1="0" x2="0.8" y2="1">
+      <stop stop-color="#32c6bd"/>
+      <stop offset="1" stop-color="#138b9f"/>
+    </linearGradient>
+  </defs>
+  <!-- Rounded back of the folder; the image rises above its front edge. -->
+  <path d="M18 71c0-12 9-21 21-21h55l19 18h104c12 0 21 9 21 21v119c0 12-9 21-21 21H39c-12 0-21-9-21-21Z" fill="url(#back)"/>
+  <rect x="51" y="29" width="154" height="139" rx="17" fill="#f5f8fc"/>
+  <rect x="58" y="36" width="140" height="125" rx="11" fill="url(#picture)"/>
+  <circle cx="164" cy="63" r="12" fill="#fff4d5"/>
+  <path d="m65 141 45-58 30 36 23-26 33 45v23H58v-10Z" fill="#e2f4f9"/>
+  <path d="m58 151 22-26 25 30 17-17 25 23H58Z" fill="#bcddec"/>
+  <!-- Flat, readable folder front with a distinct tab. -->
+  <path d="M18 129c0-12 9-21 21-21h54c6 0 11 2 15 6l16 16h93c12 0 21 9 21 21v57c0 12-9 21-21 21H39c-12 0-21-9-21-21Z" fill="url(#front)"/>
+  <path d="M39 114h54c4 0 7 1 10 4l17 17h97" fill="none" stroke="#8be8dc" stroke-width="3" stroke-linecap="round" opacity=".75"/>
+  <!-- Audio waveform, video play symbol, and image remain legible at 48 px. -->
+  <path d="M57 174v18m17-31v44m17-54v64m17-45v25" fill="none" stroke="#074e6f" stroke-width="8" stroke-linecap="round"/>
+  <path d="M149 153c-5-3-10 0-10 6v43c0 6 5 9 10 6l41-23c5-3 5-9 0-12Z" fill="#fff"/>
+</svg>

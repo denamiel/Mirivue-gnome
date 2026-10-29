@@ -1,0 +1,112 @@
+name: GNOME — tests et paquets
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+
+jobs:
+  gtk:
+    name: GTK4 et fenêtre réelle — Ubuntu 24.04
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Installer les composants natifs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gi python3-gi-cairo python3-cairo python3-pil python3-mutagen python3-setuptools python3-wheel python3-build python3-installer gir1.2-gtk-4.0 gir1.2-adw-1 gir1.2-gnomedesktop-4.0 gir1.2-poppler-0.18 xvfb xauth dbus-x11 desktop-file-utils fonts-dejavu-core
+      - name: Tests et ouverture de la fenêtre en environnement isolé
+        run: dbus-run-session -- xvfb-run -a bash packaging/verify.sh
+      - name: Construire et contrôler la distribution Python
+        run: |
+          /usr/bin/python3 -m build --no-isolation
+          /usr/bin/python3 packaging/check_wheel.py dist/*.whl
+
+  fedora:
+    name: RPM Fedora ${{ matrix.fedora }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        fedora: ['44', '45']
+    container: fedora:${{ matrix.fedora }}
+    steps:
+      - name: Préparer la construction Fedora
+        run: dnf -y install git rpm-build python3 dnf5-plugins
+      - uses: actions/checkout@v4
+      - name: Construire le RPM avec ses tests GTK
+        run: |
+          dnf -y builddep packaging/fedora/mirivue-gnome.spec
+          python3 packaging/make_source.py --output packaging/fedora --no-aur
+          rpmbuild -ba --define "_sourcedir $PWD/packaging/fedora" --define "_rpmdir $PWD/dist/rpms" --define "_srcrpmdir $PWD/dist/srpms" packaging/fedora/mirivue-gnome.spec
+      - name: Installer et contrôler le lanceur du RPM
+        run: |
+          dnf -y install dist/rpms/noarch/*.rpm
+          cd /tmp
+          test "$(mirivue-gnome --version)" = "$(rpm -q --qf '%{VERSION}' mirivue-gnome)"
+          dbus-run-session -- xvfb-run -a timeout 40 mirivue-gnome --window-smoke-test
+      - name: Vérifier si les paquets peuvent être rendus disponibles
+        run: python3 -c 'import json; print("MIRIVUE_PUBLICATION_READY=" + str(json.load(open("packaging/release.json"))["publication_ready"]).lower())' >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        if: env.MIRIVUE_PUBLICATION_READY == 'true'
+        with:
+          name: rpm-fedora-${{ matrix.fedora }}
+          path: dist/rpms/noarch/*.rpm
+
+  arch:
+    name: Paquet Arch / CachyOS
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Préparer Arch
+        run: |
+          pacman -Syu --noconfirm git python python-build python-installer python-setuptools python-wheel python-gobject python-cairo python-pillow python-mutagen gtk4 libadwaita gnome-desktop-4 poppler-glib hicolor-icon-theme gvfs ffmpeg mediainfo gst-plugins-good xorg-server-xvfb xorg-xauth dbus desktop-file-utils ttf-dejavu
+          useradd --create-home builder
+      - uses: actions/checkout@v4
+      - name: Construire et vérifier avec makepkg
+        run: |
+          python3 packaging/make_source.py
+          cp dist/mirivue-gnome-*.tar.gz dist/aur/
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          runuser -u builder -- bash -c 'cd "$1/dist/aur"; makepkg --noconfirm --cleanbuild; makepkg --printsrcinfo > .SRCINFO' -- "$GITHUB_WORKSPACE"
+          pacman -U --noconfirm dist/aur/*.pkg.tar.zst
+          cd /tmp
+          mirivue-gnome --version
+          dbus-run-session -- xvfb-run -a timeout 40 mirivue-gnome --window-smoke-test
+      - name: Vérifier si les paquets peuvent être rendus disponibles
+        run: python3 -c 'import json; print("MIRIVUE_PUBLICATION_READY=" + str(json.load(open("packaging/release.json"))["publication_ready"]).lower())' >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        if: env.MIRIVUE_PUBLICATION_READY == 'true'
+        with:
+          name: arch-package
+          include-hidden-files: true
+          path: |
+            dist/aur/*.pkg.tar.zst
+            dist/aur/PKGBUILD
+            dist/aur/.SRCINFO
+
+  release:
+    name: Publier une version validée
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [gtk, fedora, arch]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Vérifier le tag et la licence
+        run: /usr/bin/python3 packaging/check_release.py --require-license --tag "$GITHUB_REF_NAME"
+      - name: Préparer les sources de la version
+        run: /usr/bin/python3 packaging/make_source.py
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-packages
+      - name: Publier les fichiers validés
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mapfile -d '' assets < <(find release-packages -type f \( -name '*.rpm' -o -name '*.pkg.tar.zst' \) -print0)
+          gh release create "$GITHUB_REF_NAME" dist/mirivue-gnome-*.tar.gz dist/*.sha256 "${assets[@]}" --verify-tag --title "Mirivue GNOME ${GITHUB_REF_NAME#v}" --generate-notes
