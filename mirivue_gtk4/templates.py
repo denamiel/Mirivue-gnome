@@ -10,6 +10,7 @@ from .i18n import tr
 class Templates:
     def __init__(self, window):
         self.window = window
+        self.closed = False
         self.menu = Gio.Menu()
         self.cancel = Gio.Cancellable()
         self.monitors = []
@@ -17,6 +18,8 @@ class Templates:
         self.reload()
 
     def reload(self):
+        if self.closed:
+            return False
         self.timer = 0
         self.cancel.cancel()
         self.cancel = Gio.Cancellable()
@@ -30,12 +33,15 @@ class Templates:
         if path and path != GLib.get_home_dir():
             section = Gio.Menu()
             self.menu.append_section(None, section)
-            self.read(Gio.File.new_for_path(path), section, 0, self.cancel,
-                      lambda: self.menu.remove(1) if section.get_n_items() else None)
+            cancel = self.cancel
+            def finished():
+                if not self.closed and not cancel.is_cancelled() and self.cancel is cancel and section.get_n_items():
+                    self.menu.remove(1)
+            self.read(Gio.File.new_for_path(path), section, 0, cancel, finished)
         return False
 
     def changed(self, *_):
-        if not self.timer:
+        if not self.closed and not self.timer:
             self.timer = GLib.timeout_add(100, self.reload)
 
     def read(self, folder, menu, depth, cancel, finished=lambda: None):
@@ -109,8 +115,10 @@ class Templates:
                                         GLib.PRIORITY_DEFAULT, cancel, ready)
 
     def close(self):
+        self.closed = True
         self.cancel.cancel()
         if self.timer:
             GLib.source_remove(self.timer)
+            self.timer = 0
         for monitor in self.monitors:
             monitor.cancel()

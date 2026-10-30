@@ -236,6 +236,9 @@ class NativeFileBehaviorsTests(unittest.TestCase):
         (templates / 'nested' / 'Other.txt').write_text('other')
         with patch('mirivue_gtk4.templates.GLib.get_user_special_dir', return_value=str(templates)):
             provider = Templates(self.window)
+            # A cancelled enumeration must not mutate the replacement menu.
+            provider.reload()
+            provider.reload()
             try:
                 def ready():
                     section = provider.menu.get_item_link(1, 'section') if provider.menu.get_n_items() > 1 else None
@@ -248,6 +251,8 @@ class NativeFileBehaviorsTests(unittest.TestCase):
                 self.assertEqual((self.folder / 'Note.txt').read_text(), 'template content')
             finally:
                 provider.close()
+                provider.changed()
+                self.assertEqual(provider.timer, 0)
 
     def test_status_selection_uses_incremental_model_totals(self):
         path = self.folder / 'item.txt'
