@@ -109,8 +109,12 @@ class NativeFileBehaviorsTests(unittest.TestCase):
         first.write_bytes(b'123')
         (sub / 'two.txt').write_bytes(b'45678')
         data = summarize_files([Gio.File.new_for_path(str(sub)), Gio.File.new_for_path(str(first))], Gio.Cancellable())
-        self.assertEqual((data['files'], data['folders'], data['bytes']), (2, 1, 8))
+        self.assertEqual((data['files'], data['folders'], data['bytes']), (2, 0, 8))
         self.assertEqual(data['errors'], [])
+        empty = self.folder / 'empty'
+        empty.mkdir()
+        totals = summarize_files([Gio.File.new_for_path(str(empty))], Gio.Cancellable())
+        self.assertEqual((totals['files'], totals['folders'], totals['bytes']), (0, 0, 0))
         cancel = Gio.Cancellable()
         cancel.cancel()
         with self.assertRaises(GLib.Error):

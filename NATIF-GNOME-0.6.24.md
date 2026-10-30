@@ -26,6 +26,7 @@
 - [Vues, raccourcis, presse-papiers et modèles](https://github.com/GNOME/nautilus/blob/283739c868edcceb4e2fde4374b747cd1bf447ab/src/nautilus-files-view.c)
 - [Opérations de fichiers](https://github.com/GNOME/nautilus/blob/283739c868edcceb4e2fde4374b747cd1bf447ab/src/nautilus-file-operations.c)
 - [Nommage des liens](https://github.com/GNOME/nautilus/blob/283739c868edcceb4e2fde4374b747cd1bf447ab/src/nautilus-filename-utilities.c)
+- [Propriétés et décompte du contenu](https://github.com/GNOME/nautilus/blob/283739c868edcceb4e2fde4374b747cd1bf447ab/src/nautilus-properties.c)
 - [Panneau des emplacements](https://github.com/GNOME/nautilus/blob/283739c868edcceb4e2fde4374b747cd1bf447ab/src/nautilus-sidebar.c)
 
 API publiques utilisées : [GIO File](https://docs.gtk.org/gio/iface.File.html), [GDK Drag](https://docs.gtk.org/gdk4/class.Drag.html), [GTK Popover](https://docs.gtk.org/gtk4/class.Popover.html), [Adwaita TabView](https://gnome.pages.gitlab.gnome.org/libadwaita/doc/main/class.TabView.html).

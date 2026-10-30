@@ -34,7 +34,8 @@ def add_totals(dialog, group, files):
             contents.set_subtitle(tr('Calcul interrompu'))
             size.set_subtitle('—')
         else:
-            contents.set_subtitle(trf('\x1f0\x1f fichiers, \x1f1\x1f dossiers', data['files'], data['folders']))
+            contents.set_subtitle(tr('Dossier vide') if not data['files'] and not data['folders'] and not data['errors']
+                                  else trf('\x1f0\x1f fichiers, \x1f1\x1f dossiers', data['files'], data['folders']))
             size.set_subtitle(GLib.format_size(data['bytes']))
             locations.set_subtitle('\n'.join(sorted(data['locations'])))
             types.set_subtitle(', '.join(sorted(data['types'])))

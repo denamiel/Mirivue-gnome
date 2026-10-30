@@ -8,6 +8,7 @@ def summarize_files(files, cancellable):
     files = list({file.get_uri(): file for file in files}.values())
     # A selected child must not be counted twice with its selected parent.
     roots = [file for file in files if not any(file.has_prefix(other) for other in files if not file.equal(other))]
+    root_uris = {file.get_uri() for file in roots}
     result = dict(files=0, folders=0, bytes=0, types=set(), locations=set(), errors=[])
     stack = list(roots)
     while stack:
@@ -15,7 +16,7 @@ def summarize_files(files, cancellable):
         file = stack.pop()
         try:
             info = file.query_info(ATTRIBUTES, Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, cancellable)
-            if file in roots:
+            if file.get_uri() in root_uris:
                 result['types'].add(Gio.content_type_get_description(info.get_content_type() or 'application/octet-stream'))
                 parent = file.get_parent()
                 result['locations'].add(parent.get_parse_name() if parent else file.get_parse_name())
@@ -23,7 +24,9 @@ def summarize_files(files, cancellable):
                 result['files'] += 1
                 result['bytes'] += info.get_size()
                 continue
-            result['folders'] += 1
+            # Nautilus counts the contents, not each selected folder itself.
+            if file.get_uri() not in root_uris:
+                result['folders'] += 1
             enumerator = file.enumerate_children(ATTRIBUTES, Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, cancellable)
             try:
                 while True:
