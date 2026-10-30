@@ -35,4 +35,5 @@ package() {
   desktop-file-validate "$pkgdir/usr/share/applications/org.pdenams.Mirivue.Gtk4.desktop"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 COPYING "$pkgdir/usr/share/licenses/$pkgname/COPYING"
+  bash packaging/install_docs.sh "$pkgdir/usr/share/doc/$pkgname"
 }

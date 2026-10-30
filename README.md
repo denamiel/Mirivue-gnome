@@ -126,3 +126,12 @@ hébergées sur GitHub et le dépôt Pacman signé est publié. Celui-ci suit le
 commits `main` ayant réussi le workflow requis. COPR reste un circuit Fedora
 distinct dont les réglages SCM et webhooks sont externes au code.
 Aucune publication dans l'AUR n'est effectuée automatiquement.
+
+## Documentation installée
+
+Les paquets contenant la révision documentaire installent les guides dans
+`/usr/share/doc/mirivue-gnome/`, en conservant leurs sous-dossiers.
+Le contenu copié est comparé aux sources pendant le conditionnement.
+Sur Fedora, cette livraison porte la révision RPM `2` pour `1.0.0~beta.2` ;
+les versions applicatives restent inchangées. Une mise à jour du dépôt GitHub
+seul ne remplace pas les documents d'un paquet déjà installé.

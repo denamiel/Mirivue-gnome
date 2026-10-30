@@ -47,6 +47,10 @@ jobs:
       - name: Installer et contrôler le lanceur du RPM
         run: |
           dnf -y install --allowerasing dist/rpms/noarch/*.rpm
+          test "$(rpm -q --qf '%{RELEASE}' mirivue-gnome)" = "$(rpmspec -q --srpm --qf '%{RELEASE}' packaging/fedora/mirivue-gnome.spec)"
+          for document in README.md CHANGELOG.md BETA-1.0.0.md packaging/PUBLICATION.md; do
+            cmp "$document" "/usr/share/doc/mirivue-gnome/$document"
+          done
           cd /tmp
           test "$(mirivue-gnome --version)" = "$(/usr/bin/python3 "$GITHUB_WORKSPACE/packaging/check_release.py" --format display)"
           test "$(rpm -q --qf '%{VERSION}' mirivue-gnome)" = "$(/usr/bin/python3 "$GITHUB_WORKSPACE/packaging/check_release.py" --format rpm)"
@@ -78,6 +82,9 @@ jobs:
           chown -R builder:builder "$GITHUB_WORKSPACE"
           runuser -u builder -- bash -c 'cd "$1/dist/aur"; makepkg --noconfirm --cleanbuild; makepkg --printsrcinfo > .SRCINFO' -- "$GITHUB_WORKSPACE"
           pacman -U --noconfirm dist/aur/*.pkg.tar.zst
+          for document in README.md CHANGELOG.md BETA-1.0.0.md packaging/PUBLICATION.md; do
+            cmp "$document" "/usr/share/doc/mirivue-gnome/$document"
+          done
           cd /tmp
           mirivue-gnome --version
           xvfb-run -a dbus-run-session -- timeout 40 mirivue-gnome --window-smoke-test

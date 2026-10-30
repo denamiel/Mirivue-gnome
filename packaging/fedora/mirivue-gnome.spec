@@ -1,7 +1,7 @@
 Name:           mirivue-gnome
 %global upstream_version 1.0.0-beta.2
 Version:        1.0.0~beta.2
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        GNOME file and media manager with two panes
 License:        GPL-3.0-or-later
 URL:            https://github.com/denamiel/Mirivue-gnome
@@ -61,11 +61,13 @@ tabs, media information, previews and background file operations.
 %pyproject_save_files mirivue_gtk4
 desktop-file-validate %{buildroot}%{_datadir}/applications/org.pdenams.Mirivue.Gtk4.desktop
 
+bash packaging/install_docs.sh "%{buildroot}%{_docdir}/%{name}"
+
 %check
 xvfb-run -a dbus-run-session -- bash packaging/verify.sh
 
 %files -f %{pyproject_files}
-%doc CHANGELOG.md README.md
+%doc %{_docdir}/%{name}/
 %license LICENSE COPYING
 %{_bindir}/mirivue-gnome
 %{_datadir}/applications/org.pdenams.Mirivue.Gtk4.desktop
@@ -74,6 +76,9 @@ xvfb-run -a dbus-run-session -- bash packaging/verify.sh
 %{_datadir}/mirivue-gnome/
 
 %changelog
+* Sat Oct 31 2026 Mirivue contributors - 1.0.0~beta.2-2
+- Ship and verify updated installation and publication guides.
+
 * Fri Oct 30 2026 Mirivue contributors - 1.0.0~beta.2-1
 - Always monitor displayed folders with GIO; remove redundant preference.
 
