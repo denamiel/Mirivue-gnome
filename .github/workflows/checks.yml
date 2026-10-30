@@ -48,7 +48,8 @@ jobs:
         run: |
           dnf -y install --allowerasing dist/rpms/noarch/*.rpm
           cd /tmp
-          test "$(mirivue-gnome --version)" = "$(rpm -q --qf '%{VERSION}' mirivue-gnome)"
+          test "$(mirivue-gnome --version)" = "$(/usr/bin/python3 "$GITHUB_WORKSPACE/packaging/check_release.py" --format display)"
+          test "$(rpm -q --qf '%{VERSION}' mirivue-gnome)" = "$(/usr/bin/python3 "$GITHUB_WORKSPACE/packaging/check_release.py" --format rpm)"
           xvfb-run -a dbus-run-session -- timeout 40 mirivue-gnome --window-smoke-test
       - name: Vérifier si les paquets peuvent être rendus disponibles
         run: python3 -c 'import json; print("MIRIVUE_PUBLICATION_READY=" + str(json.load(open("packaging/release.json"))["publication_ready"]).lower())' >> "$GITHUB_ENV"
@@ -113,4 +114,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mapfile -d '' assets < <(find release-packages -type f \( -name '*.rpm' -o -name '*.pkg.tar.zst' \) -print0)
-          gh release create "$GITHUB_REF_NAME" dist/mirivue-gnome-*.tar.gz dist/*.sha256 "${assets[@]}" --verify-tag --title "Mirivue GNOME ${GITHUB_REF_NAME#v}" --generate-notes
+          prerelease=()
+          if [[ "$GITHUB_REF_NAME" == *-alpha.* || "$GITHUB_REF_NAME" == *-beta.* || "$GITHUB_REF_NAME" == *-rc.* ]]; then prerelease=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" "${prerelease[@]}" dist/mirivue-gnome-*.tar.gz dist/*.sha256 "${assets[@]}" --verify-tag --title "Mirivue GNOME ${GITHUB_REF_NAME#v}" --generate-notes

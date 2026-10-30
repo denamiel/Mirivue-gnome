@@ -27,3 +27,6 @@ Les dossiers accessibles par GVfs utilisent les mêmes vues en liste et en grill
 
 Préférences d’affichage
 La mémorisation du mode de vue et du tri par dossier est facultative. Jusqu’à trois légendes peuvent être affichées sous les icônes. Les dates utilisent les formats régionaux et le choix simple/détaillé de Mirivue. Ces préférences ne sont pas synchronisées avec celles de GNOME Files.
+
+Sauvegarde initiale des métadonnées
+Lorsque la sauvegarde est activée, la première version existante du fichier modifié est conservée dans un fichier « .mirivue-original ». Le suivi caché « .mirivue-backup.json » relie cet original à la version publiée par Mirivue. Les modifications suivantes réutilisent cet original après vérification. Un fichier remplacé, une sauvegarde modifiée ou un suivi inconnu bloque la réutilisation ; aucun de ces fichiers n’est écrasé. Les anciennes sauvegardes successives sont conservées et ne sont pas automatiquement adoptées. Pour une modification XMP, la sauvegarde concerne le compagnon XMP existant, pas le média.

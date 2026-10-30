@@ -6,7 +6,11 @@ KIO ou KDE.
 
 ## Version et état
 
-**0.6.24** rapproche les opérations de fichiers des conventions de Nautilus :
+**1.0.0-beta.1** inaugure la série bêta 1.0. Les sauvegardes des métadonnées
+conservent le premier original avec un suivi de provenance vérifié ; les anciennes
+sauvegardes successives sont conservées.
+
+Cette version reprend les améliorations de 0.6.24 et rapproche les opérations de fichiers des conventions de Nautilus :
 renommage individuel par popover, transferts et annulation groupés, propriétés
 récursives GIO, recherche récursive et modèles de documents. La restauration des
 onglets et les préférences par dossier sont facultatives et propres à Mirivue.
@@ -14,7 +18,8 @@ onglets et les préférences par dossier sont facultatives et propres à Mirivue
 Les tests utilisent GTK/GIO sous Xvfb. Les résultats par distribution doivent
 être contrôlés dans GitHub Actions avant publication. Une comparaison manuelle
 GNOME/Wayland et des serveurs SMB/SFTP réels reste nécessaire.
-Voir [NATIF-GNOME-0.6.24.md](NATIF-GNOME-0.6.24.md) pour la portée et les limites.
+Voir [BETA-1.0.0.md](BETA-1.0.0.md) pour cette bêta et
+[NATIF-GNOME-0.6.24.md](NATIF-GNOME-0.6.24.md) pour la portée du rapprochement avec Nautilus.
 
 ## Licence
 
