@@ -22,6 +22,22 @@ class ViewPreferencesTests(unittest.TestCase):
             state.save()
             self.assertEqual(State(root).settings['pane_views'], {'left': 'icons', 'right': 'details'})
 
+    def test_retired_monitor_switch_is_ignored_without_changing_other_choices(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            selected = {'monitor_external': False, 'folders_first': True, 'hidden': True,
+                        'pane_views': {'left': 'icons', 'right': 'details'}}
+            (root / 'settings.json').write_text(json.dumps(selected))
+            state = State(root)
+            self.assertNotIn('monitor_external', state.settings)
+            for key in ('folders_first', 'hidden', 'pane_views'):
+                self.assertEqual(state.settings[key], selected[key])
+            state.save()
+            saved = json.loads((root / 'settings.json').read_text())
+            self.assertNotIn('monitor_external', saved)
+            for key in ('folders_first', 'hidden', 'pane_views'):
+                self.assertEqual(saved[key], selected[key])
+
     def test_does_not_reference_nautilus_view_or_sort_preferences(self):
         source = (Path(__file__).resolve().parents[1] / 'mirivue_gtk4' / 'app.py').read_text()
         self.assertNotIn('org.gnome.nautilus.preferences', source)

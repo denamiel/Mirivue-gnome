@@ -2028,7 +2028,7 @@ class Pane(Gtk.Box):
         if self.monitor:
             self.monitor.cancel()
             self.monitor = None
-        if not self.window.state.settings['monitor_external'] or self.closed:
+        if self.closed:
             return
         try:
             self.monitor = Gio.File.new_for_path(str(self.folder)).monitor_directory(

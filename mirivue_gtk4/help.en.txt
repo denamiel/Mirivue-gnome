@@ -30,3 +30,6 @@ Remembering the view and sort order per folder is optional. Up to three captions
 
 Original Metadata Backup
 When backup is enabled, the first existing version of the edited file is preserved as “.mirivue-original”. A hidden “.mirivue-backup.json” record binds this original to the version published by Mirivue. Later edits reuse the original after verification. A replaced file, modified backup or unrecognized record blocks reuse; none of these files is overwritten. Older successive backups are retained and never automatically adopted. For XMP edits, the backup covers the existing XMP sidecar, not the media.
+
+Folder Updates
+Displayed folders update automatically through GIO, including GVfs views when the backend supports monitoring. This behavior is always enabled and has no Preferences switch. F5 remains available to request a manual refresh, particularly when the server provides no change notifications.

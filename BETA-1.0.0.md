@@ -1,16 +1,16 @@
-# Mirivue GNOME 1.0.0-beta.1
+# Mirivue GNOME 1.0.0-beta.2
 
 ## Numérotation
 
-Première bêta de la série 1.0, sans changement de nom de paquet, d'identifiant
+Série bêta 1.0, sans changement de nom de paquet, d'identifiant
 GNOME ou de répertoire des réglages.
 
 | Usage | Version |
 | --- | --- |
-| Application, sources et tag | `1.0.0-beta.1` / `v1.0.0-beta.1` |
-| Fedora / RPM | `1.0.0~beta.1` |
-| Arch / CachyOS | `1.0.0beta1` |
-| Métadonnées Python | `1.0.0b1` |
+| Application, sources et tag | `1.0.0-beta.2` / `v1.0.0-beta.2` |
+| Fedora / RPM | `1.0.0~beta.2` |
+| Arch / CachyOS | `1.0.0beta2` |
+| Métadonnées Python | `1.0.0b2` |
 
 Ces formes préservent l'ordre des mises à jour : 0.6.24, bêta 1, bêta 2,
 release candidate, puis 1.0.0 stable. Le workflow de publication marque les
@@ -64,3 +64,26 @@ Les tests couvrent les éditions successives, les changements de fichier ou
 d'original, les sauvegardes anciennes, l'annulation, l'échec de publication,
 l'échec de suivi après publication et les éditions XMP réelles. L'ordre des
 versions est vérifié avec RPM et vercmp dans leurs constructions respectives.
+
+## Actualisation automatique — bêta 2
+
+Les dossiers affichés sont surveillés avec `Gio.File.monitor_directory` et
+`WATCH_MOVES`, pour les dossiers locaux et les vues GIO/GVfs. L'interrupteur
+correspondant est retiré des Préférences. L'ancienne valeur `monitor_external`,
+même fausse, est ignorée ; elle disparaît lors du prochain enregistrement des
+réglages, dont les autres choix sont conservés. F5 reste disponible.
+
+La disponibilité des notifications dépend du backend. En cas de refus de
+surveillance, le dossier reste consultable et actualisable manuellement ;
+aucun mécanisme Python de scrutation périodique n'est ajouté.
+
+Références officielles vérifiées :
+- https://docs.gtk.org/gio/method.File.monitor_directory.html
+- https://docs.gtk.org/gio/flags.FileMonitorFlags.html
+- https://docs.gtk.org/gtk4/property.DirectoryList.monitored.html
+
+Le moniteur interne de Gtk.DirectoryList reste désactivé pour la raison de
+stabilité documentée dans NATIF-GNOME-0.6.24.md. La surveillance emploie le
+moniteur GIO distinct déjà utilisé par l'application. Les tests exercent GIO
+réel sur des fichiers temporaires ; un serveur SMB/SFTP réel et le bureau
+GNOME/Wayland ne sont pas observés dans cet environnement.

@@ -1,5 +1,11 @@
 # Journal des modifications — Mirivue GNOME GTK4
 
+## 1.0.0-beta.2 — 30 octobre 2026
+
+- Actualisation automatique des dossiers affichés avec les moniteurs natifs GIO, sans interrupteur dans les Préférences.
+- Ancien réglage `monitor_external` ignoré au chargement et omis à l'enregistrement, sans modifier les autres préférences.
+- Surveillance locale et GIO/GVfs systématique lorsque le backend le permet ; F5 reste disponible en cas d'absence de surveillance.
+
 ## 1.0.0-beta.1 — 30 octobre 2026
 
 - Première bêta 1.0 de l'édition GNOME ; identité de l'application et chemins des réglages conservés.

@@ -1062,12 +1062,6 @@ def preferences(parent):
     button.connect('clicked', lambda *_: parent.clear_history())
     row.add_suffix(button)
     privacy.add(row)
-    toggle(
-        advanced,
-        'Surveiller les changements effectués dans d’autres applications',
-        'monitor_external',
-        callback=lambda _active: [pane.update_monitoring() for pane in parent.panes],
-    )
     # The integrated batch renamer is the normal/default choice.  External
     # tools remain optional and a manually entered command is explicit.
     preset_names = [tr('Renommage intégré'), tr('Commande personnalisée'), *renaming.PRESETS.keys()]
