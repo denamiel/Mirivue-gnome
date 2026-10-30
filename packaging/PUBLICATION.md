@@ -64,7 +64,7 @@ ne dépend pas de l'existence préalable d'une archive de version sur GitHub.
 
 Incrémenter la version Python, celle de l'ancien installateur conservé et celle
 du `.spec`, puis compléter `CHANGELOG.md`. Pousser un tag correspondant, par
-exemple `v0.6.22`, sur le commit validé.
+exemple `v0.6.23`, sur le commit validé.
 
 Après succès des trois jobs, le workflow crée une version GitHub avec les
 sources et les paquets. Le tag et la licence sont contrôlés avant publication.

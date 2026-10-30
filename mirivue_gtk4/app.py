@@ -11,6 +11,7 @@ from gi.repository import Adw, Gtk, Gio, Gdk, GLib
 from . import __version__, i18n
 from .i18n import tr
 from .backend import State, MediaService, JobQueue
+from .tabs import TabGroup
 from .pane import Pane
 from .preview import Preview, Thumbnails
 from .indicator import StatusNotifier, appindicator_available
@@ -38,6 +39,7 @@ from .core import (
 )
 from .core.undo import UndoManager, RenameRecord, FolderRecord
 from .clipboard_transfer import (
+    encode_uris, decode_uris,
     GNOME_MIME,
     LEGACY_MIME,
     encode_files,
@@ -78,6 +80,8 @@ class MirivueWindow(Adw.ApplicationWindow):
         self.state = state or State()
         i18n.language = self.state.settings['language']
         self.set_default_size(1280, 800)
+        # Breakpoint windows require a minimum allocation (libadwaita contract).
+        self.set_size_request(360, 240)
         if self.state.legacy_favorites:
             migrate_legacy_favorites(self.state.legacy_favorites)
             self.state.legacy_favorites = []
@@ -120,7 +124,7 @@ class MirivueWindow(Adw.ApplicationWindow):
             .duplicate { font-weight: bold; }
             .media-grid > child { margin: 6px; }
             .mirivue-path-surface {
-                background-color: color-mix(in srgb, currentColor 10%, transparent);
+                background-color: alpha(currentColor, 0.1);
                 border-radius: 9px;
             }
             .mirivue-path-surface button {
@@ -184,10 +188,7 @@ class MirivueWindow(Adw.ApplicationWindow):
             self.path_group.append(pane.location_bar)
         self.tab_groups = []
         for pane in (left, right):
-            tabs = Gtk.Notebook(scrollable=True, show_border=False, show_tabs=False)
-            tabs.append_page(pane, Gtk.Label(label=tr('Dossier personnel')))
-            pane.tabs = tabs
-            tabs.connect('switch-page', lambda _tabs, child, _index: self.activate_pane(child))
+            tabs = TabGroup(self, pane)
             self.tab_groups.append(tabs)
         self.paned.set_start_child(self.tab_groups[0])
         self.paned.set_end_child(self.tab_groups[1])
@@ -268,7 +269,13 @@ class MirivueWindow(Adw.ApplicationWindow):
         self.paned.connect('notify::position', lambda *_: self.sync_toolbar_geometry())
         self.sync_toolbar_geometry()
         self.toasts = Adw.ToastOverlay(child=self.navigation)
-        self.set_content(self.toasts)
+        self.tab_overview = Adw.TabOverview(child=self.toasts, view=left.tabs.view)
+        self.tab_overview.connect('create-tab', self.overview_new_tab)
+        self.set_content(self.tab_overview)
+        self.tabs_button = Adw.TabButton(view=left.tabs.view, visible=False)
+        self.tabs_button.set_tooltip_text(tr('Afficher les onglets'))
+        self.tabs_button.connect('clicked', lambda *_: self.tab_overview.set_open(True))
+        header.pack_end(self.tabs_button)
         GLib.idle_add(self.apply_preview_startup, priority=GLib.PRIORITY_LOW)
         # Adwaita peut restaurer l’état de la barre latérale lors du premier
         # calcul de géométrie. Une seconde vérification après ce calcul garantit
@@ -284,6 +291,10 @@ class MirivueWindow(Adw.ApplicationWindow):
                 )
             )
             bp.add_setter(widget, prop, True)
+            if limit == 850:
+                bp.add_setter(self.tabs_button, 'visible', True)
+                for group in self.tab_groups:
+                    bp.add_setter(group.bar, 'visible', False)
             self.add_breakpoint(bp)
         self.connect('close-request', self.close_requested)
         folder = self.start_folder()
@@ -430,9 +441,7 @@ class MirivueWindow(Adw.ApplicationWindow):
             'restore-trash': self.restore_trash,
             'delete-trash': self.delete_trash,
             'select-all': lambda: (
-                self.active.remote_list.select_all()
-                if self.active.remote_file is not None
-                else self.active.selection.select_all()
+                self.active.selection.select_all()
             ),
             'hidden': self.toggle_hidden,
             'folders-first': self.toggle_folders_first,
@@ -455,9 +464,10 @@ class MirivueWindow(Adw.ApplicationWindow):
             'advanced-search': lambda: dialogs.search(self),
             'organize': lambda: dialogs.organize(self),
             'new-tab': self.new_tab,
+            'restore-tab': lambda: self.active.tabs.restore(),
             'close-tab': self.close_tab,
             'thumbnails': self.toggle_thumbnails,
-            'stop-loading': lambda: self.active.cancel.set(),
+            'stop-loading': lambda: self.active.stop_loading(),
             'add-place': self.add_place,
             'remove-place': self.remove_place,
             'rename-place': self.rename_place,
@@ -510,7 +520,7 @@ class MirivueWindow(Adw.ApplicationWindow):
         paste_into.connect('activate', lambda _a, value: self.paste(Path(value.get_string())))
         self.add_action(paste_into)
         open_folder_tab = Gio.SimpleAction.new('open-folder-tab', GLib.VariantType.new('s'))
-        open_folder_tab.connect('activate', lambda _a, value: self.new_tab(Path(value.get_string())))
+        open_folder_tab.connect('activate', lambda _a, value: self.new_tab(value.get_string()))
         self.add_action(open_folder_tab)
         find_duplicates_folder = Gio.SimpleAction.new('find-duplicates-folder', GLib.VariantType.new('s'))
         find_duplicates_folder.connect(
@@ -522,13 +532,15 @@ class MirivueWindow(Adw.ApplicationWindow):
             'activate', lambda _a, value: self.rename_folder_contents(Path(value.get_string()))
         )
         self.add_action(rename_folder_contents)
+        paste_uri = Gio.SimpleAction.new('paste-into-uri', GLib.VariantType.new('s'))
+        paste_uri.connect('activate', lambda _a, value: self.paste_gio(Gio.File.new_for_uri(value.get_string())))
+        self.add_action(paste_uri)
         app = self.get_application()
         for name, keys in {
             'show-menu': ['F10'],
             'new-tab': ['<Control>t'],
             'close-tab': ['<Control>w'],
-            'previous-tab': ['<Control>Page_Up'],
-            'next-tab': ['<Control>Page_Down'],
+            'restore-tab': ['<Control><Shift>t'],
             'refresh': ['F5', '<Control>r'],
             'split': ['F3'],
             'preview': ['F9'],
@@ -590,6 +602,17 @@ class MirivueWindow(Adw.ApplicationWindow):
             'show-menu',
             'new-tab',
             'close-tab',
+            'restore-tab',
+            'icons',
+            'details',
+            'open',
+            'open-with',
+            'copy-path',
+            'rename',
+            'new-folder',
+            'trash',
+            'delete',
+            'properties',
             'stop-loading',
             'quit',
             'help',
@@ -624,8 +647,19 @@ class MirivueWindow(Adw.ApplicationWindow):
         local_folder = (
             self.active.remote_file is None and not self.active.is_trash and not self.active.is_starred
         )
-        for name in ('new-folder', 'new-text-file', 'search', 'media-tools', 'advanced-search'):
+        self.lookup_action('search').set_enabled(not self.active.is_trash and not self.active.is_starred
+                                                and (self.active.remote_file is None or self.active.remote_file.get_uri().rstrip('/') != 'network:'))
+        for name in ('new-text-file', 'media-tools', 'advanced-search'):
             self.lookup_action(name).set_enabled(local_folder)
+        remote = self.active.remote_file is not None
+        self.lookup_action('new-folder').set_enabled(local_folder or remote and self.active.remote_can_write)
+        selected = self.active.selected()
+        for name, capability in (('rename', 'rename'), ('trash', 'trash'), ('delete', 'delete')):
+            enabled = not remote or bool(selected) and all(
+                getattr(item.row, 'file_capabilities', {}).get(capability, False) for item in selected)
+            if remote and name == 'rename':
+                enabled = enabled and len(selected) == 1
+            self.lookup_action(name).set_enabled(enabled)
         active = {
             'hidden': values['hidden'],
             'preview': values['preview'],
@@ -696,6 +730,12 @@ class MirivueWindow(Adw.ApplicationWindow):
         if from_focus and self.navigation_pane is not None and self.navigation_pane is not pane:
             return
         self.active = pane
+        for group in getattr(self, 'tab_groups', ()):
+            group.view.set_shortcuts(Adw.TabViewShortcuts.ALL_SHORTCUTS if group is pane.tabs
+                                     else Adw.TabViewShortcuts.NONE)
+        if hasattr(self, 'tab_overview'):
+            self.tab_overview.set_view(pane.tabs.view)
+            self.tabs_button.set_view(pane.tabs.view)
         for current in self.panes:
             current.remove_css_class('inactive-pane')
             current.remove_css_class('active-pane')
@@ -737,7 +777,7 @@ class MirivueWindow(Adw.ApplicationWindow):
 
     def selection_changed(self):
         items = self.active.selected()
-        if self.active.is_trash:
+        if self.active.is_trash or self.active.remote_file is not None:
             self.preview.show_items([])
             self.update_status()
             self.sync_toggle_actions()
@@ -755,8 +795,7 @@ class MirivueWindow(Adw.ApplicationWindow):
     def update_status(self):
         if not hasattr(self, 'status') or not self.active:
             return
-        for pane in self.panes:
-            pane.update_panel_status()
+        self.active.update_panel_status()
         selected = self.active.selected()
         label = (
             selected[0].path.name
@@ -793,7 +832,7 @@ class MirivueWindow(Adw.ApplicationWindow):
                 self.active.open(self.active.folder, False, keep_search=True)
             return
         if self.active.remote_file is not None:
-            self.active.open_remote(self.active.remote_file, False)
+            self.active.open_remote(self.active.remote_file, False, keep_search=True)
         elif self.active.is_trash:
             self.active.open_trash(False)
         else:
@@ -802,7 +841,10 @@ class MirivueWindow(Adw.ApplicationWindow):
     def toggle_split(self):
         tabs = self.tab_groups[1]
         tabs.set_visible(not tabs.get_visible())
-        right = tabs.get_nth_page(tabs.get_current_page())
+        if tabs.get_n_pages() == 0:
+            right = self.new_tab(self.active.remote_file or self.active.folder, group=tabs)
+        else:
+            right = tabs.get_nth_page(tabs.get_current_page())
         if tabs.get_visible() and not right.history:
             if self.active.remote_file is not None:
                 right.open_remote(self.active.remote_file)
@@ -813,29 +855,47 @@ class MirivueWindow(Adw.ApplicationWindow):
         self.sync_active_pane_indicator()
         self.sync_path_visibility()
 
-    def new_tab(self, folder=None):
-        if folder is not None:
-            folder = Path(folder)
-            if not folder.is_dir():
-                self.notify(tr('Dossier inaccessible.'))
-                return
-        remote = self.active.remote_file if folder is None else None
-        pane = Pane(self, self.active.width_slot)
-        tabs = self.active.tabs
-        folder = folder or self.active.folder
-        pane.tabs = tabs
-        self.panes.append(pane)
-        self.path_group.append(pane.location_bar)
-        tabs.append_page(pane, self.tab_label(pane, folder.name or '/'))
-        tabs.set_show_tabs(True)
-        tabs.set_current_page(tabs.page_num(pane))
-        if remote is not None:
-            pane.open_remote(remote)
+    def new_tab(self, folder=None, group=None):
+        group = group or self.active.tabs
+        if folder is None:
+            folder = (self.active.remote_file.get_uri() if self.active.remote_file is not None else
+                      'trash:///' if self.active.is_trash else
+                      'starred:///' if self.active.is_starred else self.active.folder)
+        if isinstance(folder, Gio.File):
+            file = folder
+        elif '://' in str(folder):
+            file = Gio.File.new_for_uri(str(folder))
         else:
-            pane.open(folder)
+            file = Gio.File.new_for_path(str(folder))
+        path = file.get_path()
+        if path and not Path(path).is_dir():
+            self.notify(tr('Dossier inaccessible.'))
+            return
+        slot = group.slot
+        pane = Pane(self, slot)
+        pane.tabs = group
+        group.append_pane(pane, file.get_basename() or '/')
+        group.set_visible(True)
+        self.navigate_file(pane, file)
+        return pane
+
+    def navigate_file(self, pane, file):
+        uri = file.get_uri()
+        if uri.startswith('trash:'):
+            pane.open_trash()
+        elif uri.startswith('starred:'):
+            pane.open_starred()
+        elif file.get_path():
+            pane.open(Path(file.get_path()))
+        else:
+            self.open_gio_location(file, pane)
+
+    def overview_new_tab(self, _overview):
+        pane = self.new_tab()
+        return pane.tabs.view.get_page(pane) if pane else None
 
     def new_window(self, folder):
-        window = MirivueWindow(self.get_application())
+        window = MirivueWindow(self.get_application(), state=self.state)
         window.active.open(folder)
         window.present()
 
@@ -845,39 +905,11 @@ class MirivueWindow(Adw.ApplicationWindow):
         except (GLib.Error, OSError) as error:
             self.notify(str(error))
 
-    def tab_label(self, pane, title):
-        box = Gtk.Box(spacing=4)
-        box.append(Gtk.Label(label=title, tooltip_text=title))
-        close = Gtk.Button(icon_name='window-close-symbolic', tooltip_text=tr('Fermer l’onglet'))
-        close.add_css_class('flat')
-        close.connect('clicked', lambda *_: self.close_specific_tab(pane))
-        box.append(close)
-        return box
-
     def close_specific_tab(self, pane):
-        tabs = pane.tabs
-        if tabs.get_n_pages() < 2:
-            return
-        index = tabs.page_num(pane)
-        pane.close()
-        self.path_group.remove(pane.location_bar)
-        self.panes.remove(pane)
-        tabs.remove_page(index)
-        tabs.set_show_tabs(tabs.get_n_pages() > 1)
-        self.activate_pane(tabs.get_nth_page(tabs.get_current_page()))
+        pane.tabs.view.close_page(pane.tabs.view.get_page(pane))
 
     def close_tab(self):
-        tabs = self.active.tabs
-        if tabs.get_n_pages() < 2:
-            self.request_quit()
-            return
-        pane = self.active
-        pane.close()
-        self.path_group.remove(pane.location_bar)
-        self.panes.remove(pane)
-        tabs.remove_page(tabs.page_num(pane))
-        tabs.set_show_tabs(tabs.get_n_pages() > 1)
-        self.activate_pane(tabs.get_nth_page(tabs.get_current_page()))
+        self.close_specific_tab(self.active)
 
     def switch_tab(self, delta):
         tabs = self.active.tabs
@@ -1255,7 +1287,7 @@ class MirivueWindow(Adw.ApplicationWindow):
                 handoff()
 
         try:
-            file.mount_enclosing_volume(Gio.MountMountFlags.NONE, Gio.MountOperation.new(), None, mounted)
+            file.mount_enclosing_volume(Gio.MountMountFlags.NONE, Gtk.MountOperation.new(self), None, mounted)
         except GLib.Error:
             handoff()
 
@@ -1316,6 +1348,8 @@ class MirivueWindow(Adw.ApplicationWindow):
         menu = Gio.Menu()
         items = self.active.selected()
         rows = [i.row for i in items]
+        if self.active.remote_file is not None:
+            return self.remote_menu(items, empty)
 
         def section(entries):
             sub = Gio.Menu()
@@ -1431,7 +1465,50 @@ class MirivueWindow(Adw.ApplicationWindow):
             section([('Vue en liste', 'details'), ('Vue en grille', 'icons')])
         return menu
 
+    def remote_menu(self, items, empty=False):
+        menu = Gio.Menu()
+        if items and not empty:
+            menu.append(tr('Ouvrir'), 'win.open')
+            menu.append(tr('Ouvrir avec…'), 'win.open-with')
+            if len(items) == 1 and items[0].row.is_dir:
+                entry = Gio.MenuItem.new(tr('Ouvrir dans un nouvel onglet'), None)
+                entry.set_action_and_target_value('win.open-folder-tab', GLib.Variant('s', items[0].file.get_uri()))
+                menu.append_item(entry)
+            menu.append(tr('Copier'), 'win.copy')
+            menu.append(tr('Couper'), 'win.cut')
+            menu.append(tr('Copier l’emplacement'), 'win.copy-path')
+            if len(items) == 1 and getattr(items[0].row, 'file_capabilities', {}).get('rename'):
+                menu.append(tr('Renommer'), 'win.rename')
+            if all(getattr(item.row, 'file_capabilities', {}).get('trash') for item in items):
+                menu.append(tr('Mettre à la corbeille…'), 'win.trash')
+            if all(getattr(item.row, 'file_capabilities', {}).get('delete') for item in items):
+                menu.append(tr('Supprimer définitivement…'), 'win.delete')
+            menu.append(tr('Propriétés'), 'win.properties')
+        if empty and self.active.remote_can_write:
+            menu.append(tr('Nouveau dossier…'), 'win.new-folder')
+        if self.can_paste():
+            destination = items[0].file if not empty and len(items) == 1 and items[0].row.is_dir else self.active.remote_file
+            entry = Gio.MenuItem.new(tr('Coller dans ce dossier') if items and not empty and destination != self.active.remote_file else tr('Coller'), None)
+            entry.set_action_and_target_value('win.paste-into-uri', GLib.Variant('s', destination.get_uri()))
+            menu.append_item(entry)
+        if empty:
+            menu.append(tr('Sélectionner tout'), 'win.select-all')
+            menu.append(tr('Éléments cachés'), 'win.hidden')
+        return menu
+
     def open_items(self, items):
+        if self.active.remote_file is not None:
+            pane = self.active
+            for item in items:
+                if item.row.is_dir:
+                    if len(items) == 1:
+                        self.open_gio_location(item.file, pane)
+                    else:
+                        self.new_tab(item.file)
+                else:
+                    launcher = Gtk.FileLauncher.new(item.file)
+                    launcher.launch(self, None, self.file_launched)
+            return
         if self.active.is_trash:
             for item in items:
                 self.open_trash_item(item)
@@ -1460,7 +1537,7 @@ class MirivueWindow(Adw.ApplicationWindow):
             return
         groups = {}
         for item in items:
-            mime = Gio.content_type_guess(str(item.path), None)[0]
+            mime = getattr(item.row, 'content_type', None) or Gio.content_type_guess(str(item.path), None)[0]
             app = Gio.AppInfo.get_default_for_type(mime, False)
             if app:
                 groups.setdefault(app.get_id() or app.get_executable(), (app, []))[1].append(
@@ -1734,8 +1811,16 @@ class MirivueWindow(Adw.ApplicationWindow):
         items = list(self.active.selected())
         if not items:
             return
-        content_type = Gio.content_type_guess(str(items[0].path), None)[0]
-        self.choose_application([Gio.File.new_for_path(str(item.path)) for item in items], content_type)
+        content_types = {getattr(item.row, 'content_type', None) for item in items}
+        content_type = next(iter(content_types)) if len(content_types) == 1 else None
+        self.choose_application([item.file for item in items], content_type)
+
+    def file_launched(self, launcher, result):
+        try:
+            launcher.launch_finish(result)
+        except GLib.Error as error:
+            if not error.matches(Gtk.dialog_error_quark(), Gtk.DialogError.DISMISSED):
+                self.notify(error.message)
 
     def choose_application(self, files, content_type):
         # GTK owns the single-file application chooser and portal handoff.
@@ -1753,11 +1838,11 @@ class MirivueWindow(Adw.ApplicationWindow):
 
                 launcher.launch(self, None, finished)
                 return
-        applications = Gio.AppInfo.get_all_for_type(content_type)
+        applications = Gio.AppInfo.get_all_for_type(content_type) if content_type else [app for app in Gio.AppInfo.get_all() if app.should_show() and (app.supports_files() or app.supports_uris())]
         if not applications:
             self.notify(tr('Aucune application disponible pour ce type de fichier.'))
             return
-        default = Gio.AppInfo.get_default_for_type(content_type, False)
+        default = Gio.AppInfo.get_default_for_type(content_type, False) if content_type else None
         applications.sort(
             key=lambda app: (
                 app.get_id() != default.get_id() if default else True,
@@ -1795,6 +1880,11 @@ class MirivueWindow(Adw.ApplicationWindow):
             listing.append(row)
         listing.select_row(listing.get_row_at_index(0))
 
+        search = Gtk.SearchEntry(placeholder_text=tr('Rechercher une application'))
+        box.prepend(search)
+        listing.set_filter_func(lambda row: search.get_text().casefold() in row.app_info.get_display_name().casefold())
+        search.connect('search-changed', lambda *_: listing.invalidate_filter())
+
         def launch(*_):
             selected = listing.get_selected_row()
             if not selected:
@@ -1816,6 +1906,9 @@ class MirivueWindow(Adw.ApplicationWindow):
         return [] if self.active.is_trash else [i.path for i in self.active.selected()]
 
     def copy_path(self):
+        if self.active.remote_file is not None:
+            self.get_clipboard().set('\n'.join(file.get_uri() for file in self.active.remote_selected()))
+            return
         self.get_clipboard().set('\n'.join(map(str, self.paths())))
 
     def select_associated(self):
@@ -1837,7 +1930,7 @@ class MirivueWindow(Adw.ApplicationWindow):
     def can_paste(self):
         formats = self.get_clipboard().get_formats()
         return any(
-            formats.contain_mime_type(mime) for mime in (GNOME_MIME, LEGACY_MIME, 'text/uri-list')
+            formats.contain_mime_type(mime) for mime in (GNOME_MIME, LEGACY_MIME, encode_uris, decode_uris, 'text/uri-list')
         ) or formats.contain_gtype(Gdk.FileList.__gtype__)
 
     def copy(self, cut):
@@ -1845,7 +1938,10 @@ class MirivueWindow(Adw.ApplicationWindow):
             files = self.active.remote_selected()
             if not files:
                 return
-            provider = Gdk.ContentProvider.new_for_value(Gdk.FileList.new_from_list(files))
+            provider = Gdk.ContentProvider.new_union([
+                Gdk.ContentProvider.new_for_bytes(GNOME_MIME, GLib.Bytes.new(encode_uris([f.get_uri() for f in files], cut))),
+                Gdk.ContentProvider.new_for_value(Gdk.FileList.new_from_list(files)),
+            ])
             self.remote_clipboard = (files, cut, provider)
             self.get_clipboard().set_content(provider)
             return
@@ -1877,26 +1973,40 @@ class MirivueWindow(Adw.ApplicationWindow):
         self.jobs.submit(tr('Transfert réseau'), [self.active.folder], work, False)
 
     def paste_remote(self, pane):
-        if pane.remote_file is None:
-            return
-        if pane.remote_file.get_uri().rstrip('/') == 'network:':
+        if pane.remote_file is not None:
+            self.paste_gio(pane.remote_file)
+
+    def paste_gio(self, destination):
+        if destination.get_uri().rstrip('/') == 'network:':
             self.notify(tr('Connectez-vous d’abord à un emplacement réseau.'))
             return
-        if (
-            getattr(self, 'remote_clipboard', None)
-            and self.get_clipboard().get_content() is self.remote_clipboard[2]
-        ):
-            files, move, _provider = self.remote_clipboard
-            self.gio_transfer(files, pane.remote_file, move)
-            return
-        if self.clipboard_paths and self.get_clipboard().get_content() is self.clipboard_provider:
-            self.gio_transfer(
-                [Gio.File.new_for_path(str(path)) for path in self.clipboard_paths],
-                pane.remote_file,
-                self.clipboard_cut,
-            )
+        clipboard = self.get_clipboard()
+
+        def values(source, result):
+            try:
+                files = list(source.read_value_finish(result).get_files())
+                cut = bool(getattr(self, 'remote_clipboard', None) and source.get_content() is self.remote_clipboard[2] and self.remote_clipboard[1])
+                if files:
+                    self.gio_transfer(files, destination, cut)
+            except GLib.Error as error:
+                self.notify(error.message)
+
+        def native(source, result):
+            try:
+                stream, _mime = source.read_finish(result)
+                data = stream.read_bytes(1024 * 1024 + 1, None).get_data()
+                stream.close(None)
+                uris, cut = decode_uris(data)
+                if uris:
+                    self.gio_transfer([Gio.File.new_for_uri(uri) for uri in uris], destination, cut)
+            except (GLib.Error, ValueError, UnicodeError):
+                source.read_value_async(Gdk.FileList, GLib.PRIORITY_DEFAULT, None, values)
+
+        formats = clipboard.get_formats()
+        if any(formats.contain_mime_type(mime) for mime in (GNOME_MIME, LEGACY_MIME)):
+            clipboard.read_async([GNOME_MIME, LEGACY_MIME], GLib.PRIORITY_DEFAULT, None, native)
         else:
-            self.notify(tr('Aucun fichier à coller.'))
+            clipboard.read_value_async(Gdk.FileList, GLib.PRIORITY_DEFAULT, None, values)
 
     def set_file_clipboard(self, paths, cut):
         self.remote_clipboard = None
@@ -1961,6 +2071,11 @@ class MirivueWindow(Adw.ApplicationWindow):
                     stream, _mime = source.read_finish(result)
                     data = stream.read_bytes(1024 * 1024 + 1, None).get_data()
                     stream.close(None)
+                    uris, cut = decode_uris(data)
+                    files = [Gio.File.new_for_uri(uri) for uri in uris]
+                    if any(not file.is_native() for file in files):
+                        self.gio_transfer(files, Gio.File.new_for_path(str(folder)), cut)
+                        return
                     paths, cut = decode_files(data)
                     if paths:
                         self.prepare_paste(paths, folder, cut)
@@ -2137,6 +2252,11 @@ class MirivueWindow(Adw.ApplicationWindow):
         return False
 
     def rename(self):
+        if getattr(self.active, 'remote_file', None) is not None:
+            selected = self.active.selected()
+            if len(selected) == 1 and getattr(selected[0].row, 'file_capabilities', {}).get('rename'):
+                self.active.start_inline_rename(selected[0])
+            return
         items = self.active.selected()
         if len(items) != 1:
             return self.bulk_rename()
@@ -2146,6 +2266,9 @@ class MirivueWindow(Adw.ApplicationWindow):
         self.active.start_inline_rename(items[0])
 
     def finish_inline_rename(self, item, name):
+        if getattr(item.row, 'gio_file', None) is not None:
+            self.rename_gio_item(item, name)
+            return
         source = item.path
         name = name.strip()
         if not name or name == source.name:
@@ -2175,6 +2298,79 @@ class MirivueWindow(Adw.ApplicationWindow):
             }
 
         self.jobs.submit(tr('Renommer'), [source], work, False)
+
+    def rename_gio_item(self, item, name):
+        file = item.file
+        if name == file.get_basename():
+            return
+        if not file_moves.valid_name(name):
+            self.notify(file_moves.invalid_name_reason(name))
+            return
+        pane = next((pane for pane in self.panes if pane.items.get(file.get_uri()) is item), None)
+        generation = pane.generation if pane else None
+
+        def finished(source, result):
+            try:
+                source.set_display_name_finish(result)
+            except GLib.Error as error:
+                self.notify(error.message)
+            if pane is not None and not pane.closed and pane.generation == generation:
+                pane.open_remote(file.get_parent(), False, keep_search=True)
+
+        file.set_display_name_async(name, GLib.PRIORITY_DEFAULT, None, finished)
+
+    def new_gio_folder(self):
+        pane = self.active
+        folder = pane.remote_file
+        generation = pane.generation
+        if folder is None or not pane.remote_can_write:
+            return
+
+        def done(name):
+            if not file_moves.valid_name(name):
+                self.notify(file_moves.invalid_name_reason(name))
+                return
+            target = folder.get_child(name)
+
+            def finished(source, result):
+                try:
+                    source.make_directory_finish(result)
+                except GLib.Error as error:
+                    self.notify(error.message)
+                    return
+                if not pane.closed and pane.generation == generation:
+                    pane.open_remote(folder, False, keep_search=True)
+
+            target.make_directory_async(GLib.PRIORITY_DEFAULT, None, finished)
+
+        dialogs.text_input(self, tr('Nouveau dossier'), tr('Dossier sans titre'), done)
+
+    def remove_gio_items(self, permanent):
+        pane = self.active
+        selected = pane.selected()
+        capability = 'delete' if permanent else 'trash'
+        if not selected or not all(getattr(item.row, 'file_capabilities', {}).get(capability)
+                                   for item in selected):
+            return
+        files = [item.file for item in selected]
+        folder_uri = pane.remote_file.get_uri()
+
+        def accepted():
+            def work(_path, cancelled, report):
+                for index, file in enumerate(files):
+                    if cancelled():
+                        raise InterruptedError()
+                    # A backend refusing trash never triggers a permanent delete.
+                    gio_backend.remove(file, permanent, cancelled)
+                    report((index + 1) / len(files), file.get_basename())
+                return {'gio_remote_refresh': [folder_uri]}
+
+            self.jobs.submit(tr('Supprimer définitivement' if permanent else 'Mettre à la corbeille'),
+                             [pane.folder], work, False)
+
+        dialogs.confirm(self, tr('Supprimer définitivement ces éléments ?' if permanent else
+                                 'Mettre ces éléments à la corbeille ?'),
+                        str(len(files)) + ' ' + tr('élément(s)'), accepted)
 
     def bulk_rename(self):
         paths = self.paths()
@@ -2239,6 +2435,9 @@ class MirivueWindow(Adw.ApplicationWindow):
         GLib.timeout_add(500, follow)
 
     def new_folder(self):
+        if getattr(self.active, 'remote_file', None) is not None:
+            self.new_gio_folder()
+            return
         if self.active.is_trash or self.active.is_starred or self.active.remote_file is not None:
             return
         folder = self.active.folder
@@ -2300,6 +2499,9 @@ class MirivueWindow(Adw.ApplicationWindow):
         )
 
     def trash(self, permanent=False):
+        if getattr(self.active, 'remote_file', None) is not None:
+            self.remove_gio_items(permanent)
+            return
         if self.active.is_trash:
             self.delete_trash()
             return
@@ -2486,6 +2688,9 @@ class MirivueWindow(Adw.ApplicationWindow):
         dialogs.text_input(self, tr('Ajouter à une collection…'), '', done)
 
     def properties(self):
+        if getattr(self.active, 'remote_file', None) is not None:
+            dialogs.gio_properties(self, self.active.remote_selected())
+            return
         items = self.active.selected()
         try:
             dialogs.properties(
@@ -2613,7 +2818,7 @@ class MirivueWindow(Adw.ApplicationWindow):
                 if remote_refresh:
                     for pane in self.panes:
                         if pane.remote_file is not None and pane.remote_file.get_uri() in remote_refresh:
-                            pane.open_remote(pane.remote_file, False)
+                            pane.open_remote(pane.remote_file, False, keep_search=True)
                 if result.get('archive_removed'):
                     self.touch(result['archive_removed'])
                 if 'duplicates' in result:
@@ -2790,7 +2995,7 @@ class MirivueWindow(Adw.ApplicationWindow):
                 self.job_window.close()
             application = self.get_application()
             self.destroy()
-            if application:
+            if application and not application.get_windows():
                 application.quit()
             return False
 
@@ -2823,13 +3028,22 @@ class MirivueGtkApplication(Adw.Application):
     def open_files(self, _app, files, _hint):
         self.activate()
         window = self.props.active_window
-        if files:
-            path = files[0].get_path()
-            if path:
-                path = Path(path)
-                window.active.open(path if path.is_dir() else path.parent)
-            else:
-                window.open_gio_location(files[0])
+        seen = set()
+        for index, file in enumerate(files):
+            if file.get_uri() in seen:
+                continue
+            seen.add(file.get_uri())
+            path = file.get_path()
+            is_dir = file.query_file_type(Gio.FileQueryInfoFlags.NONE, None) == Gio.FileType.DIRECTORY if path else True
+            location = file if is_dir else file.get_parent()
+            if location is None:
+                continue
+            pane = window.active if index == 0 else window.new_tab(location)
+            if pane is not None:
+                if index == 0:
+                    window.navigate_file(pane, location)
+                if not is_dir and path:
+                    pane.restore_selection.add(path)
 
 
 def reuse_existing_window():

@@ -1,5 +1,16 @@
 # Journal des modifications — Mirivue GNOME GTK4
 
+## 0.6.23 — 30 octobre 2026
+
+- Onglets natifs Adw.TabView/TabBar : déplacement, détachement, réouverture et aperçu adaptatif.
+- Bilan de renommage par ligne : noms inchangés, changements et conflits, sans couleurs imposées.
+- Recherche par nom cohérente en mode local/récursif ; résumé limité aux éléments sélectionnés ou affichés.
+- Tri des noms GLib ; attributs caché et sauvegarde fournis par GIO.
+- Dossiers GVfs dans les vues communes, inventaire et surveillance Gtk.DirectoryList.
+- Presse-papiers distant GNOME, conservation des URI ; ouverture de plusieurs emplacements.
+- Choix d’application pour une sélection hétérogène avec recherche.
+- Réglages, fichiers personnels et anciennes sauvegardes conservés.
+
 ## 0.6.22
 
 - Préparation de paquets natifs Fedora/COPR et Arch/CachyOS, sans dépendances KDE.

@@ -244,6 +244,38 @@ def properties(parent, paths, media_row=None):
     return dialog
 
 
+def gio_properties(parent, files):
+    if not files:
+        return
+    dialog = Adw.PreferencesDialog(title=tr('Propriétés'))
+    page = Adw.PreferencesPage()
+    group = Adw.PreferencesGroup()
+    page.add(group)
+    dialog.add(page)
+    dialog.present(parent)
+    if len(files) != 1:
+        group.add(Adw.ActionRow(title=tr('Éléments sélectionnés'), subtitle=str(len(files))))
+        return
+
+    def received(file, result):
+        try:
+            info = file.query_info_finish(result)
+        except GLib.Error as error:
+            parent.notify(error.message)
+            dialog.close()
+            return
+        for title, value in ((tr('Nom'), info.get_display_name()),
+                             (tr('Emplacement'), file.get_parse_name()),
+                             (tr('Type'), Gio.content_type_get_description(info.get_content_type() or 'application/octet-stream')),
+                             (tr('Taille'), GLib.format_size(info.get_size()))):
+            row = Adw.ActionRow(title=title, subtitle=value)
+            row.set_subtitle_selectable(True)
+            group.add(row)
+
+    files[0].query_info_async('standard::display-name,standard::content-type,standard::size',
+                              Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, None, received)
+
+
 def metadata_editor(parent, rows_override=None):
     items = list(parent.active.selected())
     rows = (
@@ -400,7 +432,7 @@ def bulk_rename(parent, rows_override=None, folder=None):
     digits.set_value(3)
     number_box.append(digits)
     box.append(number_box)
-    table, records = editable_table(rows, [('name', tr('Nouveau nom'))], lambda row, key: row.path.name)
+    table, records = editable_table(rows, [('name', tr('Nouveau nom'))], lambda row, key: row.path.name, rename_status=True)
     box.append(table)
     warning = Gtk.Label(wrap=True, xalign=0)
     box.append(warning)
@@ -412,9 +444,18 @@ def bulk_rename(parent, rows_override=None, folder=None):
         if updating[0]:
             return
         plans = renaming.prepare_names(rows, [r.values['name'] for r in records])
-        issues = [p.source.name + ' : ' + p.issue for p in plans if p.issue]
-        warning.set_label('\n'.join(issues[:5]))
-        apply.set_sensitive(any(not p.issue for p in plans))
+        by_source = {plan.source: plan for plan in plans}
+        ready = sum(not plan.issue for plan in plans)
+        conflicts = sum(bool(plan.issue) for plan in plans)
+        for record in records:
+            plan = by_source.get(record.source.path)
+            record.status = (tr('Inchangé') if plan is None else
+                             tr('Conflit') + ' : ' + plan.issue if plan.issue else
+                             tr('Sera renommé'))
+        from .i18n import trf
+        warning.set_label(trf('\x1f0\x1f à renommer · \x1f1\x1f inchangé(s) · \x1f2\x1f conflit(s)',
+                              ready, len(rows) - len(plans), conflicts))
+        apply.set_sensitive(ready > 0)
 
     def update(*_):
         selected = mode.get_selected()
@@ -1674,6 +1715,7 @@ def organize(parent):
 
 class EditRecord(GObject.Object):
     revision = GObject.Property(type=int, default=0)
+    status = GObject.Property(type=str, default='')
 
     def __init__(self, source, values):
         super().__init__()
@@ -1682,18 +1724,21 @@ class EditRecord(GObject.Object):
         self.original = dict(values)
 
 
-def editable_table(rows, fields, get_value):
+def editable_table(rows, fields, get_value, rename_status=False):
     """Only the visible cells own GTK editors, even for thousands of files."""
     records = [EditRecord(row, {key: get_value(row, key) for key, title in fields}) for row in rows]
     store = Gio.ListStore.new(EditRecord)
     store.splice(0, 0, records)
     view = Gtk.ColumnView(model=Gtk.NoSelection.new(store))
     view.set_show_column_separators(True)
-    for key, title in [('__filename', tr('Fichier')), *fields]:
+    columns = [('__filename', tr('Nom actuel') if rename_status else tr('Fichier')), *fields]
+    if rename_status:
+        columns.append(('__status', tr('Résultat')))
+    for key, title in columns:
         factory = Gtk.SignalListItemFactory()
 
         def setup(_f, li, key=key):
-            if key == '__filename':
+            if key in ('__filename', '__status'):
                 child = Gtk.Label(xalign=0, ellipsize=3)
             else:
                 child = Gtk.Entry(has_frame=False, width_chars=12)
@@ -1715,16 +1760,20 @@ def editable_table(rows, fields, get_value):
                 if key == '__filename':
                     child.set_label(record.source.path.name)
                     child.set_tooltip_text(str(record.source.path))
+                elif key == '__status':
+                    child.set_label(record.status)
+                    child.set_tooltip_text(record.status)
                 elif child.get_text() != record.values[key]:
                     child.set_text(record.values[key])
 
             paint()
-            li.edit_binding = (record, record.connect('notify::revision', paint))
+            li.edit_binding = (record, [record.connect('notify::revision', paint), record.connect('notify::status', paint)])
 
         def unbind(_f, li):
             if getattr(li, 'edit_binding', None):
-                record, handler = li.edit_binding
-                record.disconnect(handler)
+                record, handlers = li.edit_binding
+                for handler in handlers:
+                    record.disconnect(handler)
                 li.edit_binding = None
 
         factory.connect('setup', setup)
@@ -1902,11 +1951,15 @@ def toolbar(parent):
     return win
 
 
+def summary_items(pane):
+    return list(pane.selected()) or [pane.filtered.get_item(i) for i in range(pane.filtered.get_n_items())]
+
+
 def media_summary(parent):
     """A concise local overview of the current selection or loaded folder."""
     from .i18n import size_text
 
-    items = list(parent.active.selected()) or list(parent.active.items.values())
+    items = summary_items(parent.active)
     items = [item for item in items if not item.row.is_dir]
     if not items:
         parent.notify(tr('Aucun média à résumer.'))
@@ -1985,7 +2038,7 @@ def media_tools(parent):
     )
     folders = bool(rows) and all(row.is_dir for row in rows)
     eligible = {
-        'summary': bool(rows),
+        'summary': bool(parent.active.filtered.get_n_items()),
         'metadata': media_rows,
         'label': media_rows,
         'export': True,
@@ -2099,6 +2152,7 @@ def shortcuts(parent):
                     [
                         ('Nouvel onglet', '<Control>t'),
                         ('Fermer l’onglet ou la fenêtre', '<Control>w'),
+                        ('Rouvrir l’onglet fermé', '<Control><Shift>t'),
                         ('Onglet précédent', '<Control>Page_Up'),
                         ('Onglet suivant', '<Control>Page_Down'),
                     ],

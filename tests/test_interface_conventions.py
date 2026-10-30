@@ -408,7 +408,7 @@ class InterfaceConventionTests(unittest.TestCase):
             is_dir=True, media_type='', is_video=False, quality_score=None, suggested_extension='', error=''
         )
         item = SimpleNamespace(path=Path.home() / 'example-folder', row=row)
-        pane = SimpleNamespace(is_trash=False, is_starred=False, selected=lambda: [item])
+        pane = SimpleNamespace(is_trash=False, is_starred=False, remote_file=None, selected=lambda: [item])
         fake = SimpleNamespace(
             active=pane, can_paste=lambda: False, state=SimpleNamespace(settings={'external_renamer': ''})
         )
@@ -437,7 +437,7 @@ class InterfaceConventionTests(unittest.TestCase):
         self.assertIn('Ouvrir dans un nouvel onglet', labels(folder))
         self.assertIn('Renommer le contenu du dossier…', labels(folder))
         multiple = SimpleNamespace(
-            active=SimpleNamespace(is_trash=False, is_starred=False, selected=lambda: [item, item]),
+            active=SimpleNamespace(is_trash=False, is_starred=False, remote_file=None, selected=lambda: [item, item]),
             can_paste=lambda: False,
             state=fake.state,
         )

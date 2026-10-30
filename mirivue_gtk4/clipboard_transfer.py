@@ -18,6 +18,27 @@ def encode_files(paths, cut):
     )
 
 
+def encode_uris(uris, cut):
+    return (('cut' if cut else 'copy') + '\n' + '\n'.join(uris) + '\n').encode('utf-8')
+
+
+def decode_uris(data):
+    """Parse native clipboard URIs without converting remote files to local paths."""
+    if len(data) > 1024 * 1024:
+        raise ValueError(tr('Presse-papiers de fichiers trop volumineux.'))
+    lines = data.decode('utf-8').splitlines()
+    if not lines or lines[0] not in ('copy', 'cut'):
+        raise ValueError(tr('Format de presse-papiers non reconnu.'))
+    uris = []
+    for uri in lines[1:]:
+        parsed = urlsplit(uri)
+        if parsed.scheme in ('file', 'smb', 'sftp', 'ftp', 'ftps', 'dav', 'davs', 'nfs') and not any(
+            ord(char) < 32 for char in uri
+        ):
+            uris.append(uri)
+    return list(dict.fromkeys(uris)), lines[0] == 'cut'
+
+
 def decode_files(data):
     """Accept local file URIs only; never treat pasted text as a file path."""
     if len(data) > 1024 * 1024:
