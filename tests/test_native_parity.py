@@ -110,8 +110,13 @@ class NativeParityTests(unittest.TestCase):
         pane.search.set_text('')
         pane.search_changed()
         self.assertEqual(pane.filtered.get_n_items(), 2)
+        pane.search.set_text('clip')
+        pane.search_changed()
         (self.folder / 'new.txt').touch()
         until(lambda: pane.store.get_n_items() == 4)
+        self.assertEqual(pane.search.get_text(), 'clip')
+        self.assertTrue(pane.search_box.get_visible())
+        self.assertEqual(pane.filtered.get_n_items(), 1)
         pane.open(self.folder)
         until(lambda: pane.remote_model is None and pane.remote_file is None)
 
