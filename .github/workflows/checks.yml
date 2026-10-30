@@ -46,7 +46,7 @@ jobs:
           rpmbuild -ba --define "_sourcedir $PWD/packaging/fedora" --define "_rpmdir $PWD/dist/rpms" --define "_srcrpmdir $PWD/dist/srpms" packaging/fedora/mirivue-gnome.spec
       - name: Installer et contrôler le lanceur du RPM
         run: |
-          dnf -y install --allowerasing dist/rpms/noarch/*.rpm
+          dnf -y --setopt=tsflags= install --allowerasing dist/rpms/noarch/*.rpm
           test "$(rpm -q --qf '%{RELEASE}' mirivue-gnome)" = "$(rpmspec -q --srpm --qf '%{RELEASE}' packaging/fedora/mirivue-gnome.spec)"
           for document in README.md CHANGELOG.md BETA-1.0.0.md packaging/PUBLICATION.md; do
             cmp "$document" "/usr/share/doc/mirivue-gnome/$document"
