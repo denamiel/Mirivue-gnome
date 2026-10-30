@@ -9,7 +9,7 @@ gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 from gi.repository import Adw, Gtk, Gio, Gdk, GLib
 from . import __version__, i18n
-from .i18n import tr
+from .i18n import tr, trf
 from .backend import State, MediaService, JobQueue
 from .tabs import TabGroup
 from .templates import Templates
