@@ -25,7 +25,7 @@ séparément conservent leurs licences propres.
 
 ## Dépendances
 
-- Python 3.11 ou plus récent ; PyGObject ; GTK 4.12+ ; libadwaita 1.4+.
+- Python 3.11 ou plus récent ; PyGObject ; GTK 4.12+ ; libadwaita 1.5+.
 - GIO/GVfs, GnomeDesktop 4 et Poppler GLib pour les emplacements et aperçus.
 - Pillow, Mutagen, MediaInfo, FFmpeg/FFprobe et GStreamer pour les médias.
 - ExifTool, MKVToolNix CLI et `pactl` sont utilisés si les fonctions associées

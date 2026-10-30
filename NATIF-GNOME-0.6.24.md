@@ -43,4 +43,6 @@ API publiques utilisées : [GIO File](https://docs.gtk.org/gio/iface.File.html),
 5. Presse-papiers d'images et création/collage de liens par raccourcis : restant à compléter. Ne pas ajouter le collage arbitraire de texte au nom d'une convention Nautilus non vérifiée.
 6. Gestionnaire par défaut / FileManager1 : choix explicite par bureau, sans modifier les associations automatiquement.
 
+Le minimum déclaré est corrigé à libadwaita 1.5 : les dialogues natifs déjà employés nécessitent cette version (documentation officielle Adw.PreferencesDialog et Adw.AlertDialog). Ce n’est pas une bibliothèque supplémentaire.
+
 Pas de dépendance KDE, KIO, Qt ou PySide. Pas de nouvelle dépendance obligatoire de l'application, pas de couleur d'interface imposée. Réglages, vidéos, XMP et anciennes sauvegardes conservés.

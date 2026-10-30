@@ -1,6 +1,7 @@
 """GVfs trash browsing and safe restore/delete operations."""
 
 from pathlib import Path
+import time
 from gi.repository import Gio, GLib
 from . import metadata
 from ..i18n import tr
@@ -108,21 +109,40 @@ def open_item(row):
         Gio.AppInfo.launch_default_for_uri(row.trash_uri, None)
 
 
-def trash_tracked(path):
-    """Return the unambiguous new trash entry, never guess an older entry."""
+def trash_tracked(path, previous_uri=None):
+    """Track only a unique new GVfs entry; allow its monitor to catch up.
+
+    A restored entry can remain in a GVfs listing briefly. Before re-trashing
+    it, wait for that known entry to disappear instead of guessing its identity.
+    Called in an operation worker, never in the GTK event loop.
+    """
     path = Path(path).absolute()
+    def matching():
+        return {row.trash_uri for row in rows() if row.original_path == str(path)}
     try:
-        before = {row.trash_uri for row in rows() if row.original_path == str(path)}
+        before = matching()
+        deadline = time.monotonic() + 2
+        while previous_uri and previous_uri in before and time.monotonic() < deadline:
+            time.sleep(.05)
+            before = matching()
+        if previous_uri and previous_uri in before:
+            before = None
     except GLib.Error:
         before = None
     Gio.File.new_for_path(str(path)).trash(None)
     if before is None:
         return None
-    try:
-        candidates = [row for row in rows() if row.original_path == str(path) and row.trash_uri not in before]
-    except GLib.Error:
-        return None
-    return candidates[0].trash_uri if len(candidates) == 1 else None
+    deadline = time.monotonic() + 2
+    while True:
+        try:
+            candidates = matching() - before
+        except GLib.Error:
+            return None
+        if len(candidates) == 1:
+            return candidates.pop()
+        if len(candidates) > 1 or time.monotonic() >= deadline:
+            return None
+        time.sleep(.05)
 
 
 def entry_signature(uri):

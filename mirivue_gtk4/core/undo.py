@@ -166,6 +166,11 @@ class UndoManager:
         self.redo_stack.clear()
         return True
 
+    @synchronized
+    def discard_group(self, key):
+        self.undo_stack[:] = [item for item in self.undo_stack
+                              if not isinstance(item, BatchRecord) or item.key != key]
+
     def record(self, source, target, copy, group=None):
         return self.record_prepared(self.prepare_record(source, target, copy), group)
 
@@ -296,7 +301,7 @@ class UndoManager:
             if _signature(item.source) != item.restored_signature:
                 raise ValueError(tr('Le fichier restauré a changé ; rétablissement interrompu.'))
             check_removal(item.source, recursive=True)
-            uri = trash.trash_tracked(item.source)
+            uri = trash.trash_tracked(item.source, previous_uri=item.uri)
             item.uri = uri
             item.signature = trash.entry_signature(uri) if uri else None
             self.redo_stack.pop()

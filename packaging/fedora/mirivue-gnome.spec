@@ -17,7 +17,7 @@ BuildRequires:  python3-cairo
 BuildRequires:  python3-pillow
 BuildRequires:  python3-mutagen
 BuildRequires:  gtk4 >= 4.12
-BuildRequires:  libadwaita >= 1.4
+BuildRequires:  libadwaita >= 1.5
 BuildRequires:  gnome-desktop4
 BuildRequires:  poppler-glib
 BuildRequires:  xorg-x11-server-Xvfb
@@ -28,7 +28,7 @@ BuildRequires:  gvfs
 Requires:       python3-gobject
 Requires:       python3-cairo
 Requires:       gtk4 >= 4.12
-Requires:       libadwaita >= 1.4
+Requires:       libadwaita >= 1.5
 Requires:       gnome-desktop4
 Requires:       poppler-glib
 Requires:       hicolor-icon-theme

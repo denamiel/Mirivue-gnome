@@ -16,6 +16,7 @@
 - Restauration facultative des onglets et des deux panneaux, sans enregistrer les mots de passe d'URI.
 - Préférences propres à Mirivue pour les vues par dossier, les légendes et les dates régionales.
 - Compteurs incrémentaux et correction du contrôle des formats du presse-papiers.
+- Minimum libadwaita déclaré corrigé à 1.5, correspondant aux dialogues natifs déjà utilisés ; aide française/anglaise actualisée.
 - Limites et choix encore ouverts documentés dans NATIF-GNOME-0.6.24.md.
 
 ## 0.6.23 — 30 octobre 2026

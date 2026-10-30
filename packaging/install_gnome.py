@@ -48,7 +48,7 @@ def check_dependencies():
             'import gi; gi.require_version("Gtk","4.0"); gi.require_version("Adw","1"); '
             'from gi.repository import Gtk,Adw,Gio; '
             'assert (Gtk.get_major_version(),Gtk.get_minor_version()) >= (4,12), "GTK >= 4.12 requis"; '
-            'assert (Adw.get_major_version(),Adw.get_minor_version()) >= (1,4), "libadwaita >= 1.4 requis"',
+            'assert (Adw.get_major_version(),Adw.get_minor_version()) >= (1,5), "libadwaita >= 1.5 requis"',
         ],
         check=True,
     )

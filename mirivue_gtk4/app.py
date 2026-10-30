@@ -40,7 +40,7 @@ from .core import (
     directory_merge,
     trash as trash_service,
 )
-from .core.undo import UndoManager, RenameRecord, FolderRecord, TrashRecord, record_paths, individual_records
+from .core.undo import UndoManager, RenameRecord, FolderRecord, TrashRecord, BatchRecord, record_paths, individual_records
 from .core.file_safety import check_removal
 from .clipboard_transfer import (
     encode_uris, decode_uris,
@@ -2728,7 +2728,10 @@ class MirivueWindow(Adw.ApplicationWindow):
                     uri = trash_service.trash_tracked(path)
                     if uri is not None:
                         record = TrashRecord(path, uri, trash_service.entry_signature(uri))
-                return {'source': str(path), 'trash_refresh': not permanent, 'undo_entry': record}
+                return {'source': str(path), 'trash_refresh': not permanent, 'undo_entry': record,
+                        'undo_unavailable': not permanent and record is None,
+                        'warning': tr('Le fichier est dans la corbeille, mais son suivi n’est pas disponible.')
+                                   if not permanent and record is None else ''}
 
             self.jobs.submit(tr('Suppression'), paths, work, False)
 
@@ -2994,11 +2997,14 @@ class MirivueWindow(Adw.ApplicationWindow):
             elif isinstance(result, dict):
                 if result.get('warning'):
                     self.notify(result['warning'])
-                for entry in result.get('undo_entries', []):
+                if result.get('undo_unavailable'):
+                    job.undo_unavailable = True
+                    self.undo_manager.discard_group(id(job))
+                for entry in ([] if getattr(job, 'undo_unavailable', False) else result.get('undo_entries', [])):
                     self.undo_manager.record_prepared(entry, group=id(job))
                     if hasattr(entry, 'target'):
                         self.state.relocate(entry.source, entry.target, entry.copy)
-                if result.get('undo_entry'):
+                if result.get('undo_entry') and not getattr(job, 'undo_unavailable', False):
                     self.undo_manager.record_prepared(result['undo_entry'], group=id(job))
                 elif result.get('undo_record'):
                     try:
