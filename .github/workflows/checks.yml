@@ -81,6 +81,8 @@ jobs:
           cp dist/mirivue-gnome-*.tar.gz dist/aur/
           chown -R builder:builder "$GITHUB_WORKSPACE"
           runuser -u builder -- bash -c 'cd "$1/dist/aur"; makepkg --noconfirm --cleanbuild; makepkg --printsrcinfo > .SRCINFO' -- "$GITHUB_WORKSPACE"
+          # The minimal image excludes docs; retain them for this installation test.
+          sed -i '/^[[:space:]]*NoExtract[[:space:]]*=/ s|$| !usr/share/doc/*|' /etc/pacman.conf
           pacman -U --noconfirm dist/aur/*.pkg.tar.zst
           for document in README.md CHANGELOG.md BETA-1.0.0.md packaging/PUBLICATION.md; do
             cmp "$document" "/usr/share/doc/mirivue-gnome/$document"
