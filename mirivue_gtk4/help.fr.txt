@@ -30,3 +30,6 @@ La mémorisation du mode de vue et du tri par dossier est facultative. Jusqu’�
 
 Sauvegarde initiale des métadonnées
 Lorsque la sauvegarde est activée, la première version existante du fichier modifié est conservée dans un fichier « .mirivue-original ». Le suivi caché « .mirivue-backup.json » relie cet original à la version publiée par Mirivue. Les modifications suivantes réutilisent cet original après vérification. Un fichier remplacé, une sauvegarde modifiée ou un suivi inconnu bloque la réutilisation ; aucun de ces fichiers n’est écrasé. Les anciennes sauvegardes successives sont conservées et ne sont pas automatiquement adoptées. Pour une modification XMP, la sauvegarde concerne le compagnon XMP existant, pas le média.
+
+Actualisation des dossiers
+Le contenu des dossiers affichés s’actualise automatiquement grâce à GIO, y compris dans les vues GVfs lorsque le backend permet la surveillance. Ce comportement est permanent et n’a pas d’interrupteur dans les Préférences. F5 reste disponible pour demander une actualisation manuelle, notamment si le serveur ne fournit pas de notifications.

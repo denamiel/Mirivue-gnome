@@ -17,6 +17,54 @@ class NativeFileBehaviorsTests(unittest.TestCase):
     setUp = support.NativeParityTests.setUp
     tearDown = support.NativeParityTests.tearDown
 
+    def test_local_folder_updates_for_external_create_edit_rename_and_delete(self):
+        pane = self.window.active
+        # A stale in-memory flag must not disable native monitoring either.
+        self.state.settings['monitor_external'] = False
+        pane.update_monitoring()
+        self.assertIsInstance(pane.monitor, Gio.FileMonitor)
+        created = self.folder / 'external.txt'
+        created.write_bytes(b'first')
+        support.until(lambda: str(created) in pane.items)
+        created.write_bytes(b'updated outside Mirivue')
+        support.until(lambda: pane.items[str(created)].row.sort_values[1] == created.stat().st_size)
+        renamed = created.with_name('renamed externally.txt')
+        created.rename(renamed)
+        support.until(lambda: str(created) not in pane.items and str(renamed) in pane.items)
+        renamed.unlink()
+        support.until(lambda: str(renamed) not in pane.items)
+
+    def test_gio_view_updates_automatically_and_navigation_releases_monitor(self):
+        pane = self.window.active
+        pane.open_remote(Gio.File.new_for_path(str(self.folder)))
+        support.until(lambda: pane.remote_model is not None and not pane.remote_model.is_loading())
+        self.assertIsInstance(pane.monitor, Gio.FileMonitor)
+        created = self.folder / 'gio external.txt'
+        created.write_text('new file')
+        support.until(lambda: any(item.file.get_uri() == created.as_uri()
+                                  for item in pane.items.values()))
+        monitor = pane.monitor
+        other = self.folder / 'other'
+        other.mkdir()
+        pane.open(other)
+        self.assertTrue(monitor.is_cancelled())
+        monitor = pane.monitor
+        self.window.shutdown()
+        self.assertTrue(monitor.is_cancelled())
+
+    def test_unsupported_monitor_keeps_manual_refresh_available(self):
+        pane = self.window.active
+        error = GLib.Error.new_literal(Gio.io_error_quark(), 'Monitoring unavailable', Gio.IOErrorEnum.NOT_SUPPORTED)
+        with patch.object(Gio.File, 'monitor_directory', side_effect=error):
+            pane.update_monitoring()
+        self.assertIsNone(pane.monitor)
+        created = self.folder / 'manual refresh.txt'
+        created.write_text('preserve file')
+        self.window.lookup_action('refresh').activate(None)
+        support.until(lambda: str(created) in pane.items)
+        self.assertEqual(created.read_text(), 'preserve file')
+        self.assertIn('F5', self.window.get_application().get_accels_for_action('win.refresh'))
+
     def test_failed_cut_preserves_dangling_link_on_clipboard(self):
         source = self.folder / 'dangling'
         source.symlink_to(self.folder / 'missing')

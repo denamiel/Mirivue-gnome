@@ -80,7 +80,6 @@ DEFAULTS = dict(
     playback_history=False,
     quality_removed=False,
     reuse_window=True,
-    monitor_external=True,
     minimize_to_tray=False,
     columns=[0, 1, 14],
     folder_sizes=False,

@@ -6,7 +6,10 @@ KIO ou KDE.
 
 ## Version et état
 
-**1.0.0-beta.1** inaugure la série bêta 1.0. Les sauvegardes des métadonnées
+**1.0.0-beta.2** rend l’actualisation des dossiers automatique avec GIO et retire
+l’ancien interrupteur des Préférences. F5 reste disponible.
+
+La série bêta **1.0** conserve les fonctionnalités de 0.6.24. Les sauvegardes des métadonnées
 conservent le premier original avec un suivi de provenance vérifié ; les anciennes
 sauvegardes successives sont conservées.
 

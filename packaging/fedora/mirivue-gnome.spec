@@ -1,6 +1,6 @@
 Name:           mirivue-gnome
-%global upstream_version 1.0.0-beta.1
-Version:        1.0.0~beta.1
+%global upstream_version 1.0.0-beta.2
+Version:        1.0.0~beta.2
 Release:        1%{?dist}
 Summary:        GNOME file and media manager with two panes
 License:        GPL-3.0-or-later
@@ -74,6 +74,9 @@ xvfb-run -a dbus-run-session -- bash packaging/verify.sh
 %{_datadir}/mirivue-gnome/
 
 %changelog
+* Fri Oct 30 2026 Mirivue contributors - 1.0.0~beta.2-1
+- Always monitor displayed folders with GIO; remove redundant preference.
+
 * Fri Oct 30 2026 Mirivue contributors - 1.0.0~beta.1-1
 - First 1.0 beta; preserve the first original with verified provenance.
 

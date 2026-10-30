@@ -16,11 +16,12 @@ spec.loader.exec_module(release)
 
 class BetaPackagingTests(unittest.TestCase):
     def test_display_rpm_arch_and_python_are_consistent(self):
-        self.assertEqual(release.version(), '1.0.0-beta.1')
+        from mirivue_gtk4 import __version__
+        self.assertEqual(release.version(), __version__)
         for ecosystem, expected in (('display', '1.0.0-beta.1'), ('rpm', '1.0.0~beta.1'),
                                     ('arch', '1.0.0beta1'), ('python', '1.0.0b1')):
-            self.assertEqual(release.package_version(release.version(), ecosystem), expected)
-        subprocess.run([sys.executable, str(ROOT / 'packaging/check_release.py'), '--tag', 'v1.0.0-beta.1'],
+            self.assertEqual(release.package_version('1.0.0-beta.1', ecosystem), expected)
+        subprocess.run([sys.executable, str(ROOT / 'packaging/check_release.py'), '--tag', 'v' + release.version()],
                        check=True, capture_output=True)
 
     def test_python_beta_order_is_before_final_release(self):
@@ -46,10 +47,11 @@ class BetaPackagingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             subprocess.run([sys.executable, str(ROOT / 'packaging/make_source.py'), '--output', temp],
                            check=True, capture_output=True)
-            archive = Path(temp) / 'mirivue-gnome-1.0.0-beta.1.tar.gz'
+            prefix = 'mirivue-gnome-' + release.version()
+            archive = Path(temp) / (prefix + '.tar.gz')
             with tarfile.open(archive) as source:
-                self.assertIn('mirivue-gnome-1.0.0-beta.1/mirivue_gtk4/core/backup_policy.py', source.getnames())
+                self.assertIn(prefix + '/mirivue_gtk4/core/backup_policy.py', source.getnames())
             recipe = (Path(temp) / 'aur/PKGBUILD').read_text()
-            self.assertIn('pkgver=1.0.0beta1', recipe)
-            self.assertIn('_upstreamver=1.0.0-beta.1', recipe)
+            self.assertIn('pkgver=' + release.package_version(release.version(), 'arch'), recipe)
+            self.assertIn('_upstreamver=' + release.version(), recipe)
             self.assertNotIn('@VERSION@', recipe)
