@@ -1919,11 +1919,15 @@ def toolbar(parent):
     return win
 
 
+def summary_items(pane):
+    return list(pane.selected()) or [pane.filtered.get_item(i) for i in range(pane.filtered.get_n_items())]
+
+
 def media_summary(parent):
     """A concise local overview of the current selection or loaded folder."""
     from .i18n import size_text
 
-    items = list(parent.active.selected()) or [parent.active.filtered.get_item(i) for i in range(parent.active.filtered.get_n_items())]
+    items = summary_items(parent.active)
     items = [item for item in items if not item.row.is_dir]
     if not items:
         parent.notify(tr('Aucun média à résumer.'))

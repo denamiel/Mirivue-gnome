@@ -80,6 +80,8 @@ class MirivueWindow(Adw.ApplicationWindow):
         self.state = state or State()
         i18n.language = self.state.settings['language']
         self.set_default_size(1280, 800)
+        # Breakpoint windows require a minimum allocation (libadwaita contract).
+        self.set_size_request(360, 240)
         if self.state.legacy_favorites:
             migrate_legacy_favorites(self.state.legacy_favorites)
             self.state.legacy_favorites = []
@@ -122,7 +124,7 @@ class MirivueWindow(Adw.ApplicationWindow):
             .duplicate { font-weight: bold; }
             .media-grid > child { margin: 6px; }
             .mirivue-path-surface {
-                background-color: color-mix(in srgb, currentColor 10%, transparent);
+                background-color: alpha(currentColor, 0.1);
                 border-radius: 9px;
             }
             .mirivue-path-surface button {
@@ -779,8 +781,7 @@ class MirivueWindow(Adw.ApplicationWindow):
     def update_status(self):
         if not hasattr(self, 'status') or not self.active:
             return
-        for pane in self.panes:
-            pane.update_panel_status()
+        self.active.update_panel_status()
         selected = self.active.selected()
         label = (
             selected[0].path.name
@@ -826,7 +827,10 @@ class MirivueWindow(Adw.ApplicationWindow):
     def toggle_split(self):
         tabs = self.tab_groups[1]
         tabs.set_visible(not tabs.get_visible())
-        right = tabs.get_nth_page(tabs.get_current_page())
+        if tabs.get_n_pages() == 0:
+            right = self.new_tab(self.active.remote_file or self.active.folder, group=tabs)
+        else:
+            right = tabs.get_nth_page(tabs.get_current_page())
         if tabs.get_visible() and not right.history:
             if self.active.remote_file is not None:
                 right.open_remote(self.active.remote_file)
@@ -1510,7 +1514,7 @@ class MirivueWindow(Adw.ApplicationWindow):
             return
         groups = {}
         for item in items:
-            mime = Gio.content_type_guess(str(item.path), None)[0]
+            mime = getattr(item.row, 'content_type', None) or Gio.content_type_guess(str(item.path), None)[0]
             app = Gio.AppInfo.get_default_for_type(mime, False)
             if app:
                 groups.setdefault(app.get_id() or app.get_executable(), (app, []))[1].append(

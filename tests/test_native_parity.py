@@ -1,6 +1,8 @@
 """Exercise native Adwaita tabs and the shared GIO directory model under Xvfb."""
 import tempfile
 import time
+import sys
+import traceback
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -37,6 +39,9 @@ class NativeParityTests(unittest.TestCase):
         cls.app.register(None)
 
     def setUp(self):
+        self.callback_errors = []
+        self.old_hook = sys.excepthook
+        sys.excepthook = lambda *args: self.callback_errors.append(''.join(traceback.format_exception(*args)))
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.folder = self.root / 'files'
@@ -56,6 +61,8 @@ class NativeParityTests(unittest.TestCase):
                 window.destroy()
         until(lambda: not self.app.get_windows())
         self.temp.cleanup()
+        sys.excepthook = self.old_hook
+        self.assertEqual(self.callback_errors, [], 'GTK signal handlers must not raise')
 
     def test_native_tab_close_restore_reorder_and_detach(self):
         one = self.folder / 'one'
@@ -107,6 +114,47 @@ class NativeParityTests(unittest.TestCase):
         until(lambda: pane.store.get_n_items() == 4)
         pane.open(self.folder)
         until(lambda: pane.remote_model is None and pane.remote_file is None)
+
+    def test_bulk_rename_reports_only_changes_and_conflicts_without_writing(self):
+        from mirivue_gtk4 import dialogs
+        from mirivue_gtk4.core import metadata
+        paths = [self.folder / 'alpha.txt', self.folder / 'beta.txt']
+        for path in paths:
+            path.write_text('original')
+        rows = [metadata.basic_entry(path) for path in paths]
+        dialog = dialogs.bulk_rename(self.window, rows_override=rows)
+        dialog.present()
+
+        def widgets(root):
+            yield root
+            child = root.get_first_child()
+            while child:
+                yield from widgets(child)
+                child = child.get_next_sibling()
+
+        until(lambda: any(isinstance(w, Gtk.Entry) and w.get_placeholder_text() == 'Texte'
+                          for w in widgets(dialog)))
+        entry = next(w for w in widgets(dialog) if isinstance(w, Gtk.Entry)
+                     and w.get_placeholder_text() == 'Texte')
+        entry.set_text('new-')
+        until(lambda: any(isinstance(w, Gtk.Label) and '2 à renommer' in w.get_label()
+                          for w in widgets(dialog)))
+        entry.set_text('')
+        until(lambda: any(isinstance(w, Gtk.Label) and '0 à renommer' in w.get_label()
+                          and '2 inchangé(s)' in w.get_label() for w in widgets(dialog)))
+        self.assertEqual([path.read_text() for path in paths], ['original', 'original'])
+        dialog.destroy()
+
+    def test_summary_uses_visible_items_or_explicit_selection(self):
+        from mirivue_gtk4.dialogs import summary_items
+        visible = [object(), object()]
+        selected = []
+        pane = SimpleNamespace(selected=lambda: selected,
+                               filtered=SimpleNamespace(get_n_items=lambda: len(visible),
+                                                        get_item=lambda i: visible[i]))
+        self.assertEqual(summary_items(pane), visible)
+        selected.append(visible[0])
+        self.assertEqual(summary_items(pane), [visible[0]])
 
     def test_gio_uri_clipboard_preserves_remote_cut(self):
         uris = ['smb://server/share/a%20b.mkv', 'sftp://server/home/u/c.txt']

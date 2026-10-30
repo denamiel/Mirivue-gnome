@@ -1,6 +1,5 @@
 """Dynamic tabs owned and drawn by libadwaita, independently in each pane."""
 
-from pathlib import Path
 from gi.repository import Adw, Gtk, Gio, GLib
 from .i18n import tr
 
@@ -144,12 +143,22 @@ class TabGroup(Gtk.Box):
         if self.window.closed:
             return False
         if self.get_n_pages():
-            self.selected_changed()
+            if self.window.active not in self.window.panes or self.window.active.tabs is self:
+                self.selected_changed()
         else:
             others = [g for g in self.window.tab_groups if g is not self and g.get_visible()
                       and g.get_n_pages()]
             if others:
                 self.set_visible(False)
+                if self is self.window.tab_groups[0]:
+                    # Closing the last left tab keeps the remaining pane as
+                    # the main pane. Native tab transfer never closes its child.
+                    other = others[0]
+                    self.window.paned.set_start_child(None)
+                    self.window.paned.set_end_child(None)
+                    self.window.tab_groups = [other, self]
+                    self.window.paned.set_start_child(other)
+                    self.window.paned.set_end_child(self)
                 self.window.activate_pane(others[0].view.get_selected_page().get_child())
             else:
                 self.window.request_quit()

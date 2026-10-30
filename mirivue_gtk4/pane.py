@@ -598,7 +598,6 @@ class Pane(Gtk.Box):
 
     def update_search_labels(self):
         scope = (
-            tr('Recherche par nom dans le dossier affiché') if self.remote_file is not None else
             tr(
                 'Saisissez un nom pour chercher dans les sous-dossiers ; les filtres seuls concernent ce dossier'
             )
@@ -607,6 +606,8 @@ class Pane(Gtk.Box):
             if self.search_subfolders.get_active()
             else tr('Recherche dans le dossier affiché')
         )
+        if self.remote_file is not None:
+            scope = tr('Recherche par nom dans le dossier affiché')
         self.search_scope.set_label(scope)
         labels = []
         if self.type_filter != 'all':
@@ -1888,7 +1889,7 @@ class Pane(Gtk.Box):
 
     def refresh_thumbnails(self):
         """Load only missing file thumbnails; folder rows/counts are untouched."""
-        if not self.window.state.settings.get('thumbnails', False) or self.closed:
+        if self.remote_file is not None or not self.window.state.settings.get('thumbnails', False) or self.closed:
             return
         generation = self.generation
         cancel = self.cancel
@@ -2001,7 +2002,7 @@ class Pane(Gtk.Box):
                 )
         if not self.model_timer:
             self.model_timer = GLib.timeout_add(150, self.update_models)
-        if self.window.active is self and (self.selected() or self.window.state.settings['preview_first']):
+        if self.window.active is self and (item in self.selected() or self.window.state.settings['preview_first']):
             self.window.selection_changed()
         return False
 
@@ -2154,7 +2155,8 @@ class Pane(Gtk.Box):
         if update:
             self.futures.append(self.executor.submit(self.enrich, update, self.generation, self.cancel))
         self.futures = [f for f in self.futures if not f.done()]
-        self.window.update_status()
+        if self.window.active is self:
+            self.window.update_status()
         return False
 
     def touch(self, path):
@@ -2167,6 +2169,8 @@ class Pane(Gtk.Box):
                 self.change_timer = GLib.timeout_add(100, self.flush_changes)
 
     def close(self):
+        if self.closed:
+            return
         self.stop_remote_listing()
         self.closed = True
         self.cancel.set()

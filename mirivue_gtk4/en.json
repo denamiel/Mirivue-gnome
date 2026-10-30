@@ -1357,5 +1357,16 @@
   "Image trop grande": "Image too large",
   "Copie terminée ; la source a changé et a été conservée.": "Copy finished; the source changed and was kept.",
   "Copie terminée ; la suppression de la source a échoué. Vérifiez les deux emplacements.": "Copy finished; removing the source failed. Check both locations.",
-  "\u001f0\u001f médias — \u001f1\u001f": "\u001f0\u001f media files — \u001f1\u001f"
+  "\u001f0\u001f médias — \u001f1\u001f": "\u001f0\u001f media files — \u001f1\u001f",
+  "Fermer les autres onglets": "Close Other Tabs",
+  "Rouvrir l’onglet fermé": "Reopen Closed Tab",
+  "Déplacer l’onglet vers une nouvelle fenêtre": "Move Tab to New Window",
+  "Afficher les onglets": "Show Tabs",
+  "Nom actuel": "Current Name",
+  "Inchangé": "Unchanged",
+  "Sera renommé": "Will Be Renamed",
+  "Conflit": "Conflict",
+  "\u001f0\u001f à renommer · \u001f1\u001f inchangé(s) · \u001f2\u001f conflit(s)": "\u001f0\u001f to rename · \u001f1\u001f unchanged · \u001f2\u001f conflicts",
+  "Recherche par nom dans le dossier affiché": "Search by name in the current folder",
+  "Rechercher une application": "Search for an application"
 }

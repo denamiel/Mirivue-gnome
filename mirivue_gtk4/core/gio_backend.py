@@ -23,7 +23,7 @@ def local_icon(path, row=None):
             None,
         )
         if row is not None:
-            row.file_hidden = info.get_is_hidden() or info.get_is_backup()
+            row.file_hidden = info.get_attribute_boolean('standard::is-hidden') or info.get_attribute_boolean('standard::is-backup')
             row.content_type = info.get_content_type()
         custom = info.get_attribute_string('metadata::custom-icon')
         if custom:
@@ -74,8 +74,8 @@ def row_from_info(folder, info):
     row = Video(Path(info.get_name()), is_dir=directory, is_video=False, media_type='other')
     row.gio_file = file
     row.content_type = info.get_content_type() or 'application/octet-stream'
-    row.file_icon = info.get_icon()
-    row.file_hidden = info.get_is_hidden() or info.get_is_backup()
+    row.file_icon = info.get_icon() if info.has_attribute('standard::icon') else Gio.content_type_get_icon(row.content_type)
+    row.file_hidden = info.get_attribute_boolean('standard::is-hidden') or info.get_attribute_boolean('standard::is-backup')
     row.values[0] = info.get_display_name()
     row.values[1] = '' if directory else quantity(info.get_size(), ['o', 'Kio', 'Mio', 'Gio', 'Tio'], 1024)
     row.sort_values[0] = info.get_display_name()

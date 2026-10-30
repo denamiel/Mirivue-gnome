@@ -86,21 +86,25 @@ if __name__ == '__main__':
 
 
 class BreadcrumbTests(unittest.TestCase):
-    def test_tab_title_updates_plain_and_close_button_headers(self):
+    def test_tab_title_updates_native_page_and_full_location_tooltip(self):
         from types import SimpleNamespace
-        from gi.repository import Gtk
+        from gi.repository import Gtk, Adw, Gio
         from mirivue_gtk4.pane import Pane
 
-        plain = Gtk.Label(label='Dossier personnel')
-        composite = Gtk.Box()
-        composite.append(Gtk.Label(label='Ancien'))
-        composite.append(Gtk.Button())
-        for tab in (plain, composite):
-            pane = SimpleNamespace(tabs=SimpleNamespace(get_tab_label=lambda _pane: tab))
-            Pane.set_tab_title(pane, 'Audios')
-            label = tab if isinstance(tab, Gtk.Label) else tab.get_first_child()
-            self.assertEqual(label.get_label(), 'Audios')
-            self.assertEqual(label.get_tooltip_text(), 'Audios')
+        view = Adw.TabView()
+        pane = Gtk.Box()
+        pane.tabs = SimpleNamespace(view=view)
+        pane.folder = Path('/tmp/Audios')
+        pane.remote_file = None
+        page = view.append(pane)
+        page.set_title('Dossier personnel')
+        Pane.set_tab_title(pane, 'Audios')
+        self.assertEqual(page.get_title(), 'Audios')
+        self.assertEqual(page.get_tooltip(), '/tmp/Audios')
+        pane.remote_file = Gio.File.new_for_uri('sftp://server/home/u/Audios')
+        Pane.set_tab_title(pane, 'Distant')
+        self.assertEqual(page.get_title(), 'Distant')
+        self.assertEqual(page.get_tooltip(), pane.remote_file.get_parse_name())
 
     def test_focus_from_other_pane_does_not_override_navigation(self):
         from types import SimpleNamespace
