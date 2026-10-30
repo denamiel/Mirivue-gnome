@@ -72,6 +72,39 @@ l'ancien programme et ne modifie aucun réglage. Un lanceur personnalisé est
 refusé et conservé. L'ancien `.run` ne doit plus servir à mettre à jour
 l'installation gérée par DNF ou pacman.
 
+## Installation et mises à jour selon le système
+
+### CachyOS / Arch Linux x86_64
+
+Le [dépôt Pacman signé Mirivue](https://github.com/denamiel/mirivue-arch) distribue
+les paquets GNOME et KDE séparément. Suivre une seule fois son
+[guide d'installation](https://github.com/denamiel/mirivue-arch#installation-sur-arch--cachyos-x86_64)
+pour vérifier la clé publique et ajouter le dépôt, puis :
+
+```bash
+sudo pacman -Syu mirivue-gnome
+```
+
+Les mises à jour suivantes passent par `sudo pacman -Syu`. Aucune clé privée
+ni connexion GitHub n'est nécessaire sur l'ordinateur client. L'édition GNOME
+n'installe pas les dépendances KDE de l'autre édition.
+
+### Fedora
+
+Conserver le projet COPR utilisé pour installer `mirivue-gnome`, puis :
+
+```bash
+sudo dnf upgrade --refresh mirivue-gnome
+```
+
+Pour une première installation, activer le projet depuis sa page COPR avant
+`sudo dnf install mirivue-gnome`. Les environnements réellement distribués
+dépendent des constructions COPR réussies. GitHub Actions contrôle les paquets
+Fedora 44/45, sans prouver à lui seul leur publication dans COPR.
+
+Les archives Actions et les installations manuelles restent distinctes du suivi
+par dépôt. L'AUR n'est pas utilisé par le dépôt Pacman Mirivue.
+
 ## Tests automatiques
 
 ```bash
@@ -88,6 +121,8 @@ Fedora et Arch sont installés et leur lanceur est ensuite testé hors des sourc
 
 ## Publication
 
-Voir [packaging/PUBLICATION.md](packaging/PUBLICATION.md). GitHub, COPR et AUR
-ne sont pas activés par la seule présence de ces fichiers : le dépôt et les
-intégrations doivent d'abord être créés et les constructions réussir.
+Voir [packaging/PUBLICATION.md](packaging/PUBLICATION.md). Les sources sont déjà
+hébergées sur GitHub et le dépôt Pacman signé est publié. Celui-ci suit les
+commits `main` ayant réussi le workflow requis. COPR reste un circuit Fedora
+distinct dont les réglages SCM et webhooks sont externes au code.
+Aucune publication dans l'AUR n'est effectuée automatiquement.

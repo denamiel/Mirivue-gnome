@@ -1,92 +1,130 @@
 # Publication de Mirivue GNOME
 
-## 1. Licence retenue
+## État et responsabilités
 
-Le titulaire a délégué le choix de licence. GPL-3.0-or-later a été retenue
-pour cette édition GNOME. Les fichiers LICENSE et COPYING, les métadonnées
-Python et les recettes Fedora et Arch contiennent cette licence.
-La page À propos utilise l'affichage légal natif de libadwaita.
+Les [sources GNOME](https://github.com/denamiel/Mirivue-gnome) sont déjà hébergées
+sur GitHub. Le [dépôt Pacman signé](https://github.com/denamiel/mirivue-arch) est
+publié. Il n'est pas nécessaire de recréer ces dépôts pour chaque version.
 
-Le contrôle de cohérence doit réussir avant publication :
+| Circuit | Sources et déclenchement | Distribution |
+| --- | --- | --- |
+| GitHub Actions GNOME | `main`, pull requests, tags `v*`, lancement manuel | Validation ; une Release est créée pour un tag conforme après réussite |
+| Dépôt Pacman Mirivue | Commit courant de `main` validé par le workflow GNOME requis | Paquet signé Arch/CachyOS x86_64 |
+| COPR | Sources SCM et webhook configurés dans le projet COPR | RPM pour les environnements Fedora effectivement construits |
+| AUR | Soumission distincte du mainteneur | Aucun envoi automatique configuré |
+
+La configuration SCM et les webhooks COPR ne sont pas des fichiers de ce dépôt.
+Leur activation doit être vérifiée dans les services concernés. Un push, un
+tag ou la présence d'un fichier `.spec` ne prouvent pas une publication Fedora.
+
+## Licence et validation
+
+GPL-3.0-or-later figure dans LICENSE, COPYING, les métadonnées Python et les
+recettes Fedora/Arch. La page À propos emploie l'affichage légal de libadwaita.
 
 ```bash
 /usr/bin/python3 packaging/check_release.py --require-license
+xvfb-run -a dbus-run-session -- bash packaging/verify.sh
 ```
 
-## 2. Créer le dépôt GitHub
+Installer les dépendances natives avant ces contrôles. Les tests utilisent des
+répertoires XDG temporaires ; ils ne constituent pas une comparaison visuelle
+avec Nautilus dans une session GNOME/Wayland réelle.
 
-Compte : `denamiel`. Nom proposé : `Mirivue-gnome`.
-Créer un dépôt vide, sans README ou licence générés par GitHub, puis y importer
-le contenu de ce dossier. La branche principale est `main`.
+Le workflow [GNOME — tests et paquets](../.github/workflows/checks.yml) vérifie
+GTK sous Ubuntu 24.04, construit des RPM Fedora 44/45 et un paquet Arch, puis
+teste les applications installées. Les erreurs natives ne sont pas ignorées.
+Les résultats actuels sont ceux des exécutions Actions du commit concerné,
+pas les résultats historiques d'une ancienne version.
 
-Les outils connectés permettent de lire et écrire dans un dépôt déjà accessible,
-mais n'exposent pas la création d'un dépôt ni de ses webhooks. Cette première
-création doit être réalisée par le propriétaire du compte.
+## Publier une version applicative
 
-Les fichiers dans `.github/workflows/` doivent être importés avec Git ou l'API
-GitHub, pas oubliés lors d'un glisser-déposer qui masque les dossiers cachés.
-Une fois le dépôt accessible, ces fichiers pourront y être envoyés directement.
+1. Mettre à jour de façon cohérente `mirivue_gtk4/__init__.py`, `pyproject.toml`,
+   le conditionnement Fedora et les références de version de l'installateur
+   historique conservé. Adapter le modèle Arch si son format l'exige.
+2. Compléter `CHANGELOG.md` et la note de version ; vérifier les formes de
+   version avec `packaging/check_release.py`.
+3. Envoyer les changements sur une branche de travail, attendre les contrôles
+   et intégrer à `main`.
+4. Pour une Release applicative, créer le tag correspondant, par exemple
+   `v1.0.0-beta.2` uniquement pour les sources portant `1.0.0-beta.2`.
+   Ne pas déplacer un tag déjà publié.
+5. Attendre les jobs GTK, Fedora et Arch. Le job de publication vérifie le tag
+   et la licence, puis joint les sources et paquets à la Release.
 
-## 3. Attendre la validation GitHub Actions
+Le format visible, Python, RPM et Arch diffère ; voir
+[la note de bêta](../BETA-1.0.0.md). Le jeton Actions standard suffit à publier
+la Release applicative. La signature du dépôt Pacman est gérée séparément.
 
-Le workflow `GNOME — tests et paquets` est lancé pour `main`, les pull requests
-et les tags `v*`. Il vérifie la fenêtre GTK et la suite entière, construit des
-RPM Fedora 44/45 et un paquet Arch, puis teste les applications installées.
-Les erreurs de dépendance native ne sont pas transformées en succès.
+Pour une correction documentaire seule, conserver la version de l'application.
+Le dépôt Pacman peut augmenter sa révision `pkgrel` lors d'une reconstruction
+des mêmes sources applicatives avec une documentation actualisée.
 
-Les opérations courantes sur le code pourront ensuite être envoyées au dépôt
-connecté. La mise à jour sur l'ordinateur reste gérée par DNF ou le gestionnaire
-de paquets choisi ; un simple dépôt GitHub ne met pas à jour l'ordinateur.
+## Dépôt Pacman — Arch/CachyOS
 
-## 4. Ajouter Mirivue GNOME dans COPR
+Le workflow de `mirivue-arch` examine les deux éditions chaque heure. Il retient
+uniquement le commit courant de `main` dont le workflow requis est terminé avec
+succès. Il fige ces sources par SHA, construit, vérifie l'installation des deux
+éditions et leur lancement hors écran, puis signe et publie.
 
-Créer un projet `mirivue-gnome` distinct du projet KDE, ou un paquet
-`mirivue-gnome` dans un projet existant si c'est le choix de l'administrateur.
+Un échec bloque la publication. Sans nouveau commit, une exécution planifiée
+ne reconstruit pas les paquets. Une nouvelle version repart à `pkgrel=1` ;
+une reconstruction de la même version augmente `pkgrel`.
 
-- Sélectionner `fedora-44-x86_64` et `fedora-45-x86_64` si ces environnements
-  sont proposés par COPR ; d'autres architectures ne sont pas encore validées.
-- Source type : `SCM` ; type de dépôt : `git`.
-- Clone URL : `https://github.com/denamiel/Mirivue-gnome.git`.
-- Committish : `main` pour le suivi des commits, ou le tag de la version validée.
-- Méthode de construction : `make srpm` (Makefile : `.copr/Makefile`).
-- Activer le rebuild par webhook ; récupérer l'URL affichée par COPR.
-- Dans GitHub, `Settings` > `Webhooks` : ajouter cette URL avec le contenu
-  `application/json` et les événements souhaités.
+Le catalogue est servi par la Release fixe `repository` de `mirivue-arch`,
+avec paquets et catalogues signés, manifeste signé et archives sources.
+Une Release propre à l'application et un compte AUR ne sont pas nécessaires
+à ce circuit. Les clés privées restent réservées au mainteneur et à son
+job de publication ; elles ne doivent pas être copiées sur les ordinateurs clients.
 
-Ne pas confondre le secret d'un webhook avec un mot de passe public. Ne pas le
-placer dans Git. Les webhooks et projets COPR ne sont pas créés par ce dossier.
-Le `.spec` lance tous les tests GTK avant qu'un RPM puisse être accepté.
+Les utilisateurs suivent le
+[guide du dépôt](https://github.com/denamiel/mirivue-arch#installation-sur-arch--cachyos-x86_64),
+puis installent avec `sudo pacman -Syu mirivue-gnome`.
+Les mises à jour suivantes passent par `sudo pacman -Syu`.
 
-Le processus `make srpm` fabrique ses sources depuis le checkout courant : il
-ne dépend pas de l'existence préalable d'une archive de version sur GitHub.
+## Fedora / COPR
 
-## 5. Publier une version
+Conserver le projet COPR GNOME déjà utilisé. Pour vérifier ou recréer sa
+configuration, contrôler :
 
-Incrémenter la version Python, celle de l'ancien installateur conservé et celle
-du `.spec`, puis compléter `CHANGELOG.md`. Pousser un tag correspondant, par
-exemple `v0.6.23`, sur le commit validé.
+- Source SCM : Git ; URL `https://github.com/denamiel/Mirivue-gnome.git`.
+- Committish : la branche ou le tag explicitement choisi pour ce projet.
+  Avec `main`, un webhook actif peut reconstruire avant la fin d'Actions :
+  il n'existe pas de verrou GitHub Actions → COPR dans ce dépôt.
+- Sous-dossier : vide ; recette `packaging/fedora/mirivue-gnome.spec`.
+- Méthode `make srpm`, qui utilise `.copr/Makefile` depuis la racine.
+- Environnements Fedora souhaités et disponibles, puis résultats réellement
+  réussis avant de les annoncer aux utilisateurs.
+- Option de reconstruction automatique et webhook GitHub, si ce suivi est voulu.
+  Ne jamais publier l'URL secrète du webhook.
 
-Après succès des trois jobs, le workflow crée une version GitHub avec les
-sources et les paquets. Le tag et la licence sont contrôlés avant publication.
-Le jeton GitHub Actions standard suffit ; aucun secret COPR ou AUR n'est demandé
-par ce workflow.
+`make srpm` prépare les sources depuis le checkout courant ; une archive
+GitHub préexistante n'est pas nécessaire. Le `.spec` exécute les tests GTK.
 
-## 6. CachyOS / AUR
+Une réussite Actions ne prouve pas une réussite COPR. Vérifier séparément le
+commit construit dans COPR, les environnements, la version du RPM et son
+installation. Après activation du projet sur le poste Fedora :
 
-`packaging/make_source.py` génère l'archive et un `dist/aur/PKGBUILD` avec sa vraie
-empreinte SHA-256. Le job Arch en déduit `.SRCINFO` avec `makepkg --printsrcinfo`.
-Les deux fichiers sont fournis dans l'artefact GitHub `arch-package`.
+```bash
+sudo dnf install mirivue-gnome
+sudo dnf upgrade --refresh mirivue-gnome
+```
 
-L'AUR nécessite un compte et une clé SSH du mainteneur, ainsi qu'une vérification
-préalable que le nom du paquet est libre. Rien n'est envoyé à l'AUR par défaut.
-Une automatisation de cet envoi pourra être ajoutée après la première publication
-et la configuration explicite des droits du mainteneur.
+## AUR et artefacts
+
+`packaging/make_source.py` génère les sources et la recette AUR avec son SHA-256 ;
+le job Arch produit aussi `.SRCINFO`. Ces fichiers se trouvent dans l'artefact
+`arch-package`, dont la durée de conservation Actions est limitée.
+
+Leur présence n'est pas une publication AUR. Une soumission demande un compte
+mainteneur, une clé SSH et les contrôles requis par l'AUR. Le dépôt Pacman Mirivue
+fonctionne indépendamment de cette démarche.
 
 ## Références officielles
 
 - https://docs.copr.fedorainfracloud.org/user_documentation.html#webhooks
 - https://docs.copr.fedorainfracloud.org/user_documentation.html#scm
 - https://docs.fedoraproject.org/en-US/packaging-guidelines/Python/
-- https://wiki.archlinux.org/title/PKGBUILD
+- https://man.archlinux.org/man/PKGBUILD.5.en
 - https://wiki.archlinux.org/title/AUR_submission_guidelines
 - https://docs.github.com/en/actions
