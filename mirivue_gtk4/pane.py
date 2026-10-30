@@ -77,6 +77,7 @@ class Pane(Gtk.Box):
         self.remote_file = None
         self.remote_entries = []
         self.remote_model = None
+        self.remote_can_write = False
         self.local_view = window.state.settings['pane_views'][width_slot]
         self.is_trash = False
         self.is_starred = False
@@ -1318,7 +1319,7 @@ class Pane(Gtk.Box):
         item = self.picked(view, x, y)
         if item and item not in self.selected():
             self.selection.unselect_all()
-            self.selection.select_item(self.sorted.get_item(0) == item and 0 or next(i for i in range(self.sorted.get_n_items()) if self.sorted.get_item(i) is item), False)
+            self.select_paths([item.path])
         gesture.set_state(Gtk.EventSequenceState.CLAIMED)
         self.window.context_menu(view, x, y, item is None)
 
@@ -1553,6 +1554,12 @@ class Pane(Gtk.Box):
             self.window.activate_pane(self)
         return GLib.SOURCE_REMOVE
 
+    def stop_loading(self):
+        self.cancel.set()
+        self.search_cancel.set()
+        self.stop_remote_listing()
+        self.set_loading(False)
+
     def stop_remote_listing(self):
         model = getattr(self, 'remote_model', None)
         self.remote_model = None
@@ -1642,6 +1649,22 @@ class Pane(Gtk.Box):
         model.connect('notify::loading', loading)
         model.set_file(file)
         loading(model, None)
+
+        def permissions(source, result):
+            if self.closed or generation != self.generation:
+                return
+            try:
+                info = source.query_info_finish(result)
+                self.remote_can_write = info.get_attribute_boolean('access::can-write')
+            except GLib.Error:
+                self.remote_can_write = False
+            if self.window.active is self:
+                self.window.sync_toggle_actions()
+
+        self.remote_can_write = False
+        if not network_root:
+            file.query_info_async('access::can-write', Gio.FileQueryInfoFlags.NONE,
+                                  GLib.PRIORITY_DEFAULT, None, permissions)
 
     def connect_remote_address(self):
         address = self.remote_address.get_text().strip()
@@ -1889,7 +1912,7 @@ class Pane(Gtk.Box):
 
     def refresh_thumbnails(self):
         """Load only missing file thumbnails; folder rows/counts are untouched."""
-        if self.remote_file is not None or not self.window.state.settings.get('thumbnails', False) or self.closed:
+        if getattr(self, 'remote_file', None) is not None or not self.window.state.settings.get('thumbnails', False) or self.closed:
             return
         generation = self.generation
         cancel = self.cancel

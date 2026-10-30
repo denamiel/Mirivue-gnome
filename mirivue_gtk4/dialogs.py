@@ -244,6 +244,38 @@ def properties(parent, paths, media_row=None):
     return dialog
 
 
+def gio_properties(parent, files):
+    if not files:
+        return
+    dialog = Adw.PreferencesDialog(title=tr('Propriétés'))
+    page = Adw.PreferencesPage()
+    group = Adw.PreferencesGroup()
+    page.add(group)
+    dialog.add(page)
+    dialog.present(parent)
+    if len(files) != 1:
+        group.add(Adw.ActionRow(title=tr('Éléments sélectionnés'), subtitle=str(len(files))))
+        return
+
+    def received(file, result):
+        try:
+            info = file.query_info_finish(result)
+        except GLib.Error as error:
+            parent.notify(error.message)
+            dialog.close()
+            return
+        for title, value in ((tr('Nom'), info.get_display_name()),
+                             (tr('Emplacement'), file.get_parse_name()),
+                             (tr('Type'), Gio.content_type_get_description(info.get_content_type() or 'application/octet-stream')),
+                             (tr('Taille'), GLib.format_size(info.get_size()))):
+            row = Adw.ActionRow(title=title, subtitle=value)
+            row.set_subtitle_selectable(True)
+            group.add(row)
+
+    files[0].query_info_async('standard::display-name,standard::content-type,standard::size',
+                              Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, None, received)
+
+
 def metadata_editor(parent, rows_override=None):
     items = list(parent.active.selected())
     rows = (

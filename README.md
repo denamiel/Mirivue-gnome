@@ -6,10 +6,14 @@ KIO ou KDE.
 
 ## Version et état
 
-0.6.23 prépare la distribution native à partir des sources 0.6.21.
-Les fichiers de paquet, le lanceur installé et les tests automatiques sont prêts
-à être vérifiés par les outils de construction Fedora et Arch.
-Ce dépôt ne doit pas être présenté comme une version stable déjà validée.
+**0.6.23** modernise les onglets avec libadwaita et partage les vues de fichiers
+avec les dossiers GVfs. Le renommage présente ses changements et conflits ;
+la recherche par nom et le résumé suivent les éléments réellement affichés.
+Les réglages de Mirivue restent indépendants de ceux de Nautilus.
+
+La validation native couvre Ubuntu 24.04, Fedora 44/45 et Arch/CachyOS.
+La comparaison manuelle sous GNOME/Wayland et les serveurs SMB/SFTP réels
+ne sont pas reproduits par les tests Xvfb. Voir [NATIF-GNOME-0.6.23.md](NATIF-GNOME-0.6.23.md).
 
 ## Licence
 

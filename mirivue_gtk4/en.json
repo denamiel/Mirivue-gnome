@@ -355,7 +355,7 @@
   "Suppression incomplète": "Deletion Incomplete",
   "Certains éléments n’ont pas pu être supprimés. Un dossier peut avoir été partiellement vidé. Aucun échec de corbeille ne déclenche une suppression définitive.": "Some items could not be deleted. A folder may have been partially emptied. A Trash failure never triggers permanent deletion.",
   "Annulation…": "Cancelling…",
-  "Éléments sélectionnés": "Selected Items",
+  "Éléments sélectionnés": "Selected items",
   "Vérifie la lecture et calcule les débits manquants. Les débits ne sont enregistrés dans les fichiers que si cette option est activée dans Configuration.": "Checks playback and calculates missing bitrates. Bitrates are saved in files only when this option is enabled in Settings.",
   "Vérifie la lecture et mesure les débits manquants. L’enregistrement dans le fichier dépend de Configuration.": "Checks playback and measures missing bitrates. Saving in the file depends on Settings.",
   "Rapport de renommage": "Rename Report",
@@ -1368,5 +1368,7 @@
   "Conflit": "Conflict",
   "\u001f0\u001f à renommer · \u001f1\u001f inchangé(s) · \u001f2\u001f conflit(s)": "\u001f0\u001f to rename · \u001f1\u001f unchanged · \u001f2\u001f conflicts",
   "Recherche par nom dans le dossier affiché": "Search by name in the current folder",
-  "Rechercher une application": "Search for an application"
+  "Rechercher une application": "Search for an application",
+  "Supprimer définitivement ces éléments ?": "Permanently delete these items?",
+  "Mettre ces éléments à la corbeille ?": "Move these items to the Trash?"
 }

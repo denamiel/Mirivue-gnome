@@ -1,5 +1,5 @@
 Browse Files
-Each pane has its own folder, sorting, search and tabs. “Two Panes” shows or hides the second pane; F3 toggles it. Ctrl+T opens a tab; Ctrl+W closes a tab, or the window if only one tab remains. Ctrl+Page Up / Down switches tabs. Alt+Home opens Home; Ctrl+D bookmarks the current folder. Ctrl+L lets you enter a location. Double-click empty space to go to the parent folder.
+Each pane has its own folder, sorting, search and tabs. “Two Panes” shows or hides the second pane; F3 toggles it. Ctrl+T opens a tab; Ctrl+W closes a tab, or the window if only one tab remains. Ctrl+Page Up / Down switches tabs. Ctrl+Shift+T reopens the last closed tab. Tabs can be reordered or detached, and their menu can close the other tabs. A tab overview is available in narrow windows. Alt+Home opens Home; Ctrl+D bookmarks the current folder. Ctrl+L lets you enter a location. Double-click empty space to go to the parent folder.
 
 Views and Columns
 Ctrl++ / Ctrl+- changes icon size and Ctrl+0 resets it. F5 or Ctrl+R reloads the folder. “List View” displays files as rows; “Grid View” displays icons. Click a column heading to sort, or drag it to change its order. “Columns…” lets you choose visibility and profiles. Visible columns are shared by both panes, while their order can be configured separately. Folder size first shows the number of direct items; optional total size is calculated in the background.
@@ -18,3 +18,9 @@ Folder bookmarks are shared with GNOME Files and managed from the “Bookmarks�
 
 Creation and Properties
 The folder menu offers “Create New” for a folder or text file without replacing an existing entry. “Properties” shows general information and Unix permissions for a local item, verifying changes after they are applied. Symbolic links are not changed. Alt+Shift+F4 opens a terminal in the current folder when one is available.
+
+Search and Summary
+Typing searches filenames, in the folder or its subfolders. Media filters are explicit. The summary describes the selection, or only the items actually displayed after filtering. The rename preview distinguishes unchanged names, planned changes and conflicts. No file changes before confirmation.
+
+Remote Folders
+GVfs folders use the same list and grid views, sorting and GNOME file clipboard. Remote search filters the current directory without descending into subfolders. Creation, single-item rename and deletion depend on backend capabilities. A failed trash request never causes automatic permanent deletion. Batch renaming, analyses and media editing remain local-only. Reopening a closed tab applies to the current session, not full session restoration after quitting Mirivue.

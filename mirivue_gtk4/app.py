@@ -467,7 +467,7 @@ class MirivueWindow(Adw.ApplicationWindow):
             'restore-tab': lambda: self.active.tabs.restore(),
             'close-tab': self.close_tab,
             'thumbnails': self.toggle_thumbnails,
-            'stop-loading': lambda: self.active.cancel.set(),
+            'stop-loading': lambda: self.active.stop_loading(),
             'add-place': self.add_place,
             'remove-place': self.remove_place,
             'rename-place': self.rename_place,
@@ -608,6 +608,11 @@ class MirivueWindow(Adw.ApplicationWindow):
             'open',
             'open-with',
             'copy-path',
+            'rename',
+            'new-folder',
+            'trash',
+            'delete',
+            'properties',
             'stop-loading',
             'quit',
             'help',
@@ -644,8 +649,17 @@ class MirivueWindow(Adw.ApplicationWindow):
         )
         self.lookup_action('search').set_enabled(not self.active.is_trash and not self.active.is_starred
                                                 and (self.active.remote_file is None or self.active.remote_file.get_uri().rstrip('/') != 'network:'))
-        for name in ('new-folder', 'new-text-file', 'media-tools', 'advanced-search'):
+        for name in ('new-text-file', 'media-tools', 'advanced-search'):
             self.lookup_action(name).set_enabled(local_folder)
+        remote = self.active.remote_file is not None
+        self.lookup_action('new-folder').set_enabled(local_folder or remote and self.active.remote_can_write)
+        selected = self.active.selected()
+        for name, capability in (('rename', 'rename'), ('trash', 'trash'), ('delete', 'delete')):
+            enabled = not remote or bool(selected) and all(
+                getattr(item.row, 'file_capabilities', {}).get(capability, False) for item in selected)
+            if remote and name == 'rename':
+                enabled = enabled and len(selected) == 1
+            self.lookup_action(name).set_enabled(enabled)
         active = {
             'hidden': values['hidden'],
             'preview': values['preview'],
@@ -857,7 +871,7 @@ class MirivueWindow(Adw.ApplicationWindow):
         if path and not Path(path).is_dir():
             self.notify(tr('Dossier inaccessible.'))
             return
-        slot = 'left' if group is self.tab_groups[0] else 'right'
+        slot = group.slot
         pane = Pane(self, slot)
         pane.tabs = group
         group.append_pane(pane, file.get_basename() or '/')
@@ -1463,6 +1477,15 @@ class MirivueWindow(Adw.ApplicationWindow):
             menu.append(tr('Copier'), 'win.copy')
             menu.append(tr('Couper'), 'win.cut')
             menu.append(tr('Copier l’emplacement'), 'win.copy-path')
+            if len(items) == 1 and getattr(items[0].row, 'file_capabilities', {}).get('rename'):
+                menu.append(tr('Renommer'), 'win.rename')
+            if all(getattr(item.row, 'file_capabilities', {}).get('trash') for item in items):
+                menu.append(tr('Mettre à la corbeille…'), 'win.trash')
+            if all(getattr(item.row, 'file_capabilities', {}).get('delete') for item in items):
+                menu.append(tr('Supprimer définitivement…'), 'win.delete')
+            menu.append(tr('Propriétés'), 'win.properties')
+        if empty and self.active.remote_can_write:
+            menu.append(tr('Nouveau dossier…'), 'win.new-folder')
         if self.can_paste():
             destination = items[0].file if not empty and len(items) == 1 and items[0].row.is_dir else self.active.remote_file
             entry = Gio.MenuItem.new(tr('Coller dans ce dossier') if items and not empty and destination != self.active.remote_file else tr('Coller'), None)
@@ -2229,6 +2252,11 @@ class MirivueWindow(Adw.ApplicationWindow):
         return False
 
     def rename(self):
+        if getattr(self.active, 'remote_file', None) is not None:
+            selected = self.active.selected()
+            if len(selected) == 1 and getattr(selected[0].row, 'file_capabilities', {}).get('rename'):
+                self.active.start_inline_rename(selected[0])
+            return
         items = self.active.selected()
         if len(items) != 1:
             return self.bulk_rename()
@@ -2238,6 +2266,9 @@ class MirivueWindow(Adw.ApplicationWindow):
         self.active.start_inline_rename(items[0])
 
     def finish_inline_rename(self, item, name):
+        if getattr(item.row, 'gio_file', None) is not None:
+            self.rename_gio_item(item, name)
+            return
         source = item.path
         name = name.strip()
         if not name or name == source.name:
@@ -2267,6 +2298,79 @@ class MirivueWindow(Adw.ApplicationWindow):
             }
 
         self.jobs.submit(tr('Renommer'), [source], work, False)
+
+    def rename_gio_item(self, item, name):
+        file = item.file
+        if name == file.get_basename():
+            return
+        if not file_moves.valid_name(name):
+            self.notify(file_moves.invalid_name_reason(name))
+            return
+        pane = next((pane for pane in self.panes if pane.items.get(file.get_uri()) is item), None)
+        generation = pane.generation if pane else None
+
+        def finished(source, result):
+            try:
+                source.set_display_name_finish(result)
+            except GLib.Error as error:
+                self.notify(error.message)
+            if pane is not None and not pane.closed and pane.generation == generation:
+                pane.open_remote(file.get_parent(), False)
+
+        file.set_display_name_async(name, GLib.PRIORITY_DEFAULT, None, finished)
+
+    def new_gio_folder(self):
+        pane = self.active
+        folder = pane.remote_file
+        generation = pane.generation
+        if folder is None or not pane.remote_can_write:
+            return
+
+        def done(name):
+            if not file_moves.valid_name(name):
+                self.notify(file_moves.invalid_name_reason(name))
+                return
+            target = folder.get_child(name)
+
+            def finished(source, result):
+                try:
+                    source.make_directory_finish(result)
+                except GLib.Error as error:
+                    self.notify(error.message)
+                    return
+                if not pane.closed and pane.generation == generation:
+                    pane.open_remote(folder, False)
+
+            target.make_directory_async(GLib.PRIORITY_DEFAULT, None, finished)
+
+        dialogs.text_input(self, tr('Nouveau dossier'), tr('Dossier sans titre'), done)
+
+    def remove_gio_items(self, permanent):
+        pane = self.active
+        selected = pane.selected()
+        capability = 'delete' if permanent else 'trash'
+        if not selected or not all(getattr(item.row, 'file_capabilities', {}).get(capability)
+                                   for item in selected):
+            return
+        files = [item.file for item in selected]
+        folder_uri = pane.remote_file.get_uri()
+
+        def accepted():
+            def work(_path, cancelled, report):
+                for index, file in enumerate(files):
+                    if cancelled():
+                        raise InterruptedError()
+                    # A backend refusing trash never triggers a permanent delete.
+                    gio_backend.remove(file, permanent, cancelled)
+                    report((index + 1) / len(files), file.get_basename())
+                return {'gio_remote_refresh': [folder_uri]}
+
+            self.jobs.submit(tr('Supprimer définitivement' if permanent else 'Mettre à la corbeille'),
+                             [pane.folder], work, False)
+
+        dialogs.confirm(self, tr('Supprimer définitivement ces éléments ?' if permanent else
+                                 'Mettre ces éléments à la corbeille ?'),
+                        str(len(files)) + ' ' + tr('élément(s)'), accepted)
 
     def bulk_rename(self):
         paths = self.paths()
@@ -2331,6 +2435,9 @@ class MirivueWindow(Adw.ApplicationWindow):
         GLib.timeout_add(500, follow)
 
     def new_folder(self):
+        if getattr(self.active, 'remote_file', None) is not None:
+            self.new_gio_folder()
+            return
         if self.active.is_trash or self.active.is_starred or self.active.remote_file is not None:
             return
         folder = self.active.folder
@@ -2392,6 +2499,9 @@ class MirivueWindow(Adw.ApplicationWindow):
         )
 
     def trash(self, permanent=False):
+        if getattr(self.active, 'remote_file', None) is not None:
+            self.remove_gio_items(permanent)
+            return
         if self.active.is_trash:
             self.delete_trash()
             return
@@ -2578,6 +2688,9 @@ class MirivueWindow(Adw.ApplicationWindow):
         dialogs.text_input(self, tr('Ajouter à une collection…'), '', done)
 
     def properties(self):
+        if getattr(self.active, 'remote_file', None) is not None:
+            dialogs.gio_properties(self, self.active.remote_selected())
+            return
         items = self.active.selected()
         try:
             dialogs.properties(

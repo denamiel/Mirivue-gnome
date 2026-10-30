@@ -139,6 +139,12 @@ class NativeParityTests(unittest.TestCase):
         entry.set_text('new-')
         until(lambda: any(isinstance(w, Gtk.Label) and '2 à renommer' in w.get_label()
                           for w in widgets(dialog)))
+        occupied = self.folder / 'taken-alpha.txt'
+        occupied.write_text('preserve existing')
+        entry.set_text('taken-')
+        until(lambda: any(isinstance(w, Gtk.Label) and '1 à renommer' in w.get_label()
+                          and '1 conflit(s)' in w.get_label() for w in widgets(dialog)))
+        self.assertEqual(occupied.read_text(), 'preserve existing')
         entry.set_text('')
         until(lambda: any(isinstance(w, Gtk.Label) and '0 à renommer' in w.get_label()
                           and '2 inchangé(s)' in w.get_label() for w in widgets(dialog)))
@@ -155,6 +161,55 @@ class NativeParityTests(unittest.TestCase):
         self.assertEqual(summary_items(pane), visible)
         selected.append(visible[0])
         self.assertEqual(summary_items(pane), [visible[0]])
+
+    def test_gio_create_rename_and_confirmed_recursive_delete(self):
+        from mirivue_gtk4 import dialogs
+        pane = self.window.active
+        pane.open_remote(Gio.File.new_for_path(str(self.folder)))
+        until(lambda: pane.remote_can_write)
+        with patch.object(dialogs, 'text_input', side_effect=lambda parent, title, initial, callback: callback('new folder')):
+            self.window.new_folder()
+        until(lambda: (self.folder / 'new folder').is_dir())
+        until(lambda: any(item.name == 'new folder' for item in pane.items.values()))
+        item = next(item for item in pane.items.values() if item.name == 'new folder')
+        self.assertTrue(item.row.file_capabilities['rename'])
+        self.window.rename_gio_item(item, 'renamed folder')
+        until(lambda: (self.folder / 'renamed folder').is_dir())
+        (self.folder / 'renamed folder' / 'child.txt').write_text('disposable')
+        untouched = self.folder / 'untouched.txt'
+        untouched.write_text('keep')
+        gio_backend.remove(Gio.File.new_for_path(str(self.folder / 'renamed folder')), True)
+        self.assertFalse((self.folder / 'renamed folder').exists())
+        self.assertEqual(untouched.read_text(), 'keep')
+
+    def test_external_launch_processes_all_locations_once(self):
+        from mirivue_gtk4.app import MirivueGtkApplication
+        folders = [self.folder / 'one', self.folder / 'two']
+        for folder in folders:
+            folder.mkdir()
+        calls = []
+        pane = SimpleNamespace(restore_selection=set())
+        window = SimpleNamespace(active=pane,
+            navigate_file=lambda p, file: calls.append(('open', file.get_uri())),
+            new_tab=lambda file: calls.append(('tab', file.get_uri())))
+        application = SimpleNamespace(activate=lambda: None, props=SimpleNamespace(active_window=window))
+        files = [Gio.File.new_for_path(str(path)) for path in folders]
+        MirivueGtkApplication.open_files(application, None, files + files, None)
+        self.assertEqual(calls, [('open', files[0].get_uri()), ('tab', files[1].get_uri())])
+
+    def test_closing_last_tab_of_one_pane_keeps_other_pane_and_can_split_again(self):
+        window = self.window
+        left = window.active
+        window.toggle_split()
+        right = window.active
+        self.assertIsNot(left, right)
+        window.close_specific_tab(left)
+        until(lambda: window.tab_groups[0] is right.tabs)
+        self.assertFalse(window.closed)
+        self.assertIs(window.active, right)
+        window.toggle_split()
+        self.assertEqual([group.get_n_pages() for group in window.tab_groups], [1, 1])
+        self.assertTrue(window.tab_groups[1].get_visible())
 
     def test_gio_uri_clipboard_preserves_remote_cut(self):
         uris = ['smb://server/share/a%20b.mkv', 'sftp://server/home/u/c.txt']

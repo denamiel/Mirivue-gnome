@@ -8,6 +8,7 @@ class TabGroup(Gtk.Box):
     def __init__(self, window, pane):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, hexpand=True, vexpand=True)
         self.window = window
+        self.slot = pane.width_slot
         self.context_page = None
         self.closed_tabs = []
         self.placeholder = None
