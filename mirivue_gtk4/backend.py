@@ -69,6 +69,7 @@ DEFAULTS = dict(
     hide_on_start=True,
     startup='home',
     startup_path='',
+    tab_session={},
     last_folder='',
     volume_step=5,
     seek_step=10,
@@ -83,6 +84,10 @@ DEFAULTS = dict(
     minimize_to_tray=False,
     columns=[0, 1, 14],
     folder_sizes=False,
+    date_format='simple',
+    icon_captions=[-1, -1, -1],
+    remember_folder_view=False,
+    folder_views={},
     folders_first=False,
     pane_views={'left': 'details', 'right': 'details'},
     toolbar_order=[
@@ -221,6 +226,8 @@ class State:
         for key, default in DEFAULTS.items():
             if type(self.settings.get(key)) is not type(default):
                 self.settings[key] = copy.deepcopy(default)
+        self.settings['icon_captions'] = [(value if type(value) is int and value in (-1, 1, 2, 3, 14, 17, 19, 20) else -1)
+                                            for value in (self.settings['icon_captions'] + [-1, -1, -1])[:3]]
         views = self.settings['pane_views']
         self.settings['pane_views'] = {
             slot: views.get(slot) if views.get(slot) in ('details', 'icons') else 'details'
@@ -229,7 +236,8 @@ class State:
         for key, values in {
             'language': ('auto', 'fr', 'en'),
             'theme': ('auto', 'light', 'dark'),
-            'startup': ('home', 'last', 'custom'),
+            'date_format': ('simple', 'detailed'),
+            'startup': ('home', 'last', 'custom', 'session'),
         }.items():
             if self.settings[key] not in values:
                 self.settings[key] = DEFAULTS[key]

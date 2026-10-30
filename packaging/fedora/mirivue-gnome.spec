@@ -1,5 +1,5 @@
 Name:           mirivue-gnome
-Version:        0.6.23
+Version:        0.6.24
 Release:        1%{?dist}
 Summary:        GNOME file and media manager with two panes
 License:        GPL-3.0-or-later
@@ -17,17 +17,18 @@ BuildRequires:  python3-cairo
 BuildRequires:  python3-pillow
 BuildRequires:  python3-mutagen
 BuildRequires:  gtk4 >= 4.12
-BuildRequires:  libadwaita >= 1.4
+BuildRequires:  libadwaita >= 1.5
 BuildRequires:  gnome-desktop4
 BuildRequires:  poppler-glib
 BuildRequires:  xorg-x11-server-Xvfb
 BuildRequires:  xorg-x11-xauth
 BuildRequires:  dbus-daemon
+BuildRequires:  gvfs
 
 Requires:       python3-gobject
 Requires:       python3-cairo
 Requires:       gtk4 >= 4.12
-Requires:       libadwaita >= 1.4
+Requires:       libadwaita >= 1.5
 Requires:       gnome-desktop4
 Requires:       poppler-glib
 Requires:       hicolor-icon-theme
@@ -72,5 +73,5 @@ xvfb-run -a dbus-run-session -- bash packaging/verify.sh
 %{_datadir}/mirivue-gnome/
 
 %changelog
-* Fri Oct 30 2026 Mirivue contributors - 0.6.23-1
+* Fri Oct 30 2026 Mirivue contributors - 0.6.24-1
 - Prepare independent GTK4 packages under GPL-3.0-or-later.

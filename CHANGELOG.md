@@ -1,5 +1,24 @@
 # Journal des modifications — Mirivue GNOME GTK4
 
+## 0.6.24 — 30 octobre 2026
+
+- Protection des racines de volumes avant suppression et vérification de la sélection.
+- Glisser-déposer : sous-dossier survolé, dépôt dans le même panneau, touches de copie/déplacement/lien.
+- F2 individuel : popover GTK suivant Nautilus ; renommage multiple conservé.
+- Annulation des transferts groupée par action ; contrôle des dossiers copiés avant retrait.
+- Propriétés : totaux GIO asynchrones pour les dossiers et sélections multiples.
+- Recherche récursive sans texte avec critères, recherche de noms GVfs et signalement des erreurs d’accès.
+- Raccourcis Nautilus complétés ; la molette des images reste active sans régler le lecteur audio/vidéo.
+
+- Fusion explicite des dossiers, décisions par conflit et conservation des éléments ignorés.
+- Menus et réorganisation des signets, disponibilité native des emplacements récents.
+- Modèles XDG Templates surveillés par GIO, création sans modifier le modèle.
+- Restauration facultative des onglets et des deux panneaux, sans enregistrer les mots de passe d'URI.
+- Préférences propres à Mirivue pour les vues par dossier, les légendes et les dates régionales.
+- Compteurs incrémentaux et correction du contrôle des formats du presse-papiers.
+- Minimum libadwaita déclaré corrigé à 1.5, correspondant aux dialogues natifs déjà utilisés ; aide française/anglaise actualisée.
+- Limites et choix encore ouverts documentés dans NATIF-GNOME-0.6.24.md.
+
 ## 0.6.23 — 30 octobre 2026
 
 - Onglets natifs Adw.TabView/TabBar : déplacement, détachement, réouverture et aperçu adaptatif.

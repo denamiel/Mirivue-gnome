@@ -7,7 +7,7 @@ arch=('any')
 url='https://github.com/denamiel/Mirivue-gnome'
 license=('GPL-3.0-or-later')
 depends=('python>=3.11' 'python-gobject' 'python-cairo' 'python-pillow' 'python-mutagen'
-         'gtk4>=4.12' 'libadwaita>=1.4' 'gnome-desktop-4' 'poppler-glib'
+         'gtk4>=4.12' 'libadwaita>=1.5' 'gnome-desktop-4' 'poppler-glib'
          'hicolor-icon-theme' 'gvfs' 'ffmpeg' 'mediainfo' 'gst-plugins-good')
 makedepends=('python-build' 'python-installer' 'python-setuptools>=77.0.3' 'python-wheel' 'desktop-file-utils')
 checkdepends=('xorg-server-xvfb' 'xorg-xauth' 'dbus')

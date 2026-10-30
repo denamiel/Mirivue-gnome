@@ -17,6 +17,7 @@ class FakeGio:
     class FileType:
         DIRECTORY = 1
         REGULAR = 2
+        SYMBOLIC_LINK = 3
 
     class FileQueryInfoFlags:
         NONE = 0
@@ -25,6 +26,7 @@ class FakeGio:
     class FileCopyFlags:
         NONE = 0
         NO_FALLBACK_FOR_MOVE = 1
+        NOFOLLOW_SYMLINKS = 2
 
     class Cancellable:
         def __init__(self):
@@ -77,6 +79,12 @@ class FakeGLib:
 class FakeFile:
     def __init__(self, path):
         self.path = Path(path)
+
+    def get_path(self):
+        return str(self.path)
+
+    def get_uri(self):
+        return self.path.as_uri()
 
     def get_basename(self):
         return self.path.name
@@ -180,13 +188,7 @@ class GioBackendTests(unittest.TestCase):
 
         with (
             patch.object(gio_backend, '_gio', return_value=Gio),
-            patch.dict(
-                sys.modules,
-                {
-                    'gi': SimpleNamespace(repository=SimpleNamespace(GLib=FakeGLib)),
-                    'gi.repository': SimpleNamespace(GLib=FakeGLib),
-                },
-            ),
+            patch.object(gio_backend, '_glib', return_value=FakeGLib),
         ):
             self.assertIs(gio_backend.local_icon(Path('/tmp/video.bin')), marker)
         self.assertIn('standard::content-type', file.attributes)
@@ -222,13 +224,7 @@ class GioBackendTests(unittest.TestCase):
 
         with (
             patch.object(gio_backend, '_gio', return_value=Gio),
-            patch.dict(
-                sys.modules,
-                {
-                    'gi': SimpleNamespace(repository=SimpleNamespace(GLib=FakeGLib)),
-                    'gi.repository': SimpleNamespace(GLib=FakeGLib),
-                },
-            ),
+            patch.object(gio_backend, '_glib', return_value=FakeGLib),
         ):
             self.assertEqual(gio_backend.local_icon('/home/tester/Documents'), ('themed', 'folder-documents'))
             self.assertEqual(gio_backend.local_icon('/tmp/custom'), ('custom', 'file:///tmp/custom.svg'))
@@ -330,13 +326,7 @@ class GioBackendTests(unittest.TestCase):
         with (
             tempfile.TemporaryDirectory() as temporary,
             patch.object(gio_backend, '_gio', return_value=RecursiveGio),
-            patch.dict(
-                sys.modules,
-                {
-                    'gi': SimpleNamespace(repository=SimpleNamespace(GLib=FakeGLib)),
-                    'gi.repository': SimpleNamespace(GLib=FakeGLib),
-                },
-            ),
+            patch.object(gio_backend, '_glib', return_value=FakeGLib),
         ):
             root = Path(temporary)
             source = root / 'source'
@@ -367,13 +357,7 @@ class GioBackendTests(unittest.TestCase):
         with (
             tempfile.TemporaryDirectory() as temporary,
             patch.object(gio_backend, '_gio', return_value=RecursiveGio),
-            patch.dict(
-                sys.modules,
-                {
-                    'gi': SimpleNamespace(repository=SimpleNamespace(GLib=FakeGLib)),
-                    'gi.repository': SimpleNamespace(GLib=FakeGLib),
-                },
-            ),
+            patch.object(gio_backend, '_glib', return_value=FakeGLib),
         ):
             root = Path(temporary)
             source = root / 'source'

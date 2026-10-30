@@ -14,8 +14,8 @@ if '--check-dependencies' in sys.argv:
 
     if (Gtk.get_major_version(), Gtk.get_minor_version()) < (4, 12):
         raise SystemExit(tr('GTK 4.12 ou plus récent est requis.'))
-    if (Adw.get_major_version(), Adw.get_minor_version()) < (1, 4):
-        raise SystemExit(tr('libadwaita 1.4 ou plus récent est requis.'))
+    if (Adw.get_major_version(), Adw.get_minor_version()) < (1, 5):
+        raise SystemExit(tr('libadwaita 1.5 ou plus récent est requis.'))
     print('PyGObject, GTK4, libadwaita et GIO : OK')
     raise SystemExit(0)
 if '--smoke-test' in sys.argv:

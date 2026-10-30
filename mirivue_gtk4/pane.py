@@ -6,11 +6,12 @@ import os, re, threading, time, shutil
 import gi
 
 gi.require_version('Gtk', '4.0')
-from gi.repository import Gtk, Gdk, Gio, GLib, GObject, Pango
+from gi.repository import Adw, Gtk, Gdk, Gio, GLib, GObject, Pango
 from .i18n import tr
 from .backend import column_initial_width
 from .core import metadata, gio_backend, folder_search, renaming, trash as trash_service
 from .core.panel_status import summarize
+from .model_summary import ModelSummary
 from .navigation import LocationBar
 
 
@@ -78,6 +79,8 @@ class Pane(Gtk.Box):
         self.remote_entries = []
         self.remote_model = None
         self.remote_can_write = False
+        self.folder_style_ready = False
+        self.restoring_folder_style = False
         self.local_view = window.state.settings['pane_views'][width_slot]
         self.is_trash = False
         self.is_starred = False
@@ -109,6 +112,11 @@ class Pane(Gtk.Box):
         self.search_box.set_margin_start(8)
         self.search_box.set_margin_end(8)
         self.search_box.set_margin_top(4)
+        self.search_warnings = []
+        self.search_gio_cancel = None
+        self.search_warning = Adw.Banner(title=tr('Recherche partielle'), button_label=tr('Détails'), revealed=False)
+        self.search_warning.connect('button-clicked', self.show_search_warnings)
+        self.search_box.append(self.search_warning)
         search_line = Gtk.Box(spacing=8)
         self.search = Gtk.SearchEntry(
             placeholder_text=tr('Rechercher des fichiers et dossiers'), hexpand=True
@@ -157,6 +165,7 @@ class Pane(Gtk.Box):
         self.store = Gio.ListStore.new(Item)
         self.filter = Gtk.CustomFilter.new(self.matches)
         self.filtered = Gtk.FilterListModel.new(self.store, self.filter)
+        self.status_index = ModelSummary(self.filtered)
         self.sorted = Gtk.SortListModel.new(self.filtered, None)
         self.selection = Gtk.MultiSelection.new(self.sorted)
         self.selection.connect('selection-changed', self.selection_changed)
@@ -220,6 +229,7 @@ class Pane(Gtk.Box):
         self.combined_sorter.append(self.view.get_sorter())
         self.sorted.set_sorter(self.combined_sorter)
         self.view.sort_by_column(self.columns[0], Gtk.SortType.ASCENDING)
+        self.view.get_sorter().connect('changed', lambda *_: self.remember_folder_style())
         self.view.connect('activate', self.activate)
         preview_keys = Gtk.EventControllerKey()
         preview_keys.connect('key-pressed', self.quick_preview_key)
@@ -370,7 +380,7 @@ class Pane(Gtk.Box):
             view.add_controller(gesture)
             # File dragging is attached to item widgets below, away from GTK's
             # native header drag controller so the two gestures cannot compete.
-            target = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY | Gdk.DragAction.MOVE)
+            target = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY | Gdk.DragAction.MOVE | Gdk.DragAction.LINK)
             target.connect('drop', self.drop, view)
             target.connect('motion', self.drop_motion, view)
             target.connect('leave', lambda *_: self.clear_drop())
@@ -582,8 +592,11 @@ class Pane(Gtk.Box):
             and self.criteria['label'].casefold() not in row.personal_label.casefold()
         ):
             return False
+        for key in ('artist', 'album'):
+            if self.criteria.get(key) and self.criteria[key].casefold() not in str(row.media_tags.get(key, '')).casefold():
+                return False
         needle = self.search.get_text().casefold().strip()
-        return not needle or needle in item.path.name.casefold()
+        return not needle or needle in getattr(item, 'name', item.path.name).casefold()
 
     def make_no_results(self):
         label = Gtk.Label(
@@ -691,6 +704,12 @@ class Pane(Gtk.Box):
         return True
 
     def reset_search_for_navigation(self, keep_search=False):
+        popover = getattr(self, 'rename_popover', None)
+        if popover is not None:
+            popover.popdown()
+        if self.search_gio_cancel is not None:
+            self.search_gio_cancel.cancel()
+        self.search_warning.set_revealed(False)
         self.search_cancel.set()
         self.search_serial += 1
         self.search_recursive_active = False
@@ -706,22 +725,28 @@ class Pane(Gtk.Box):
         self.search_finished = False
 
     def search_changed(self):
-        if not self.search_box.get_visible():
+        if self.closed or not self.search_box.get_visible():
             return
         self.update_search_labels()
+        if self.search_gio_cancel is not None:
+            self.search_gio_cancel.cancel()
         self.search_cancel.set()
         self.search_serial += 1
         if self.search_timer:
             GLib.source_remove(self.search_timer)
         self.search_finished = False
+        self.filter.changed(Gtk.FilterChange.DIFFERENT)
         self.update_search_empty()
-        if self.remote_file is None and self.search_subfolders.get_active() and self.search.get_text().strip():
+        if self.search_subfolders.get_active() and (self.search.get_text().strip() or self.criteria or self.type_filter != 'all'):
             self.search_timer = GLib.timeout_add(200, self.start_recursive_search, self.search_serial)
         else:
             self.search_timer = 0
             if self.search_recursive_active:
                 self.search_recursive_active = False
-                self.open(self.folder, False, keep_search=True)
+                if self.remote_file is not None:
+                    self.open_remote(self.remote_file, False, keep_search=True)
+                else:
+                    self.open(self.folder, False, keep_search=True)
             else:
                 self.search_finished = True
                 self.filter.changed(Gtk.FilterChange.DIFFERENT)
@@ -729,11 +754,21 @@ class Pane(Gtk.Box):
 
     def start_recursive_search(self, serial):
         self.search_timer = 0
-        if serial != self.search_serial or not self.search_box.get_visible():
+        if self.closed or serial != self.search_serial or not self.search_box.get_visible():
             return GLib.SOURCE_REMOVE
         self.cancel.set()
         self.cancel = threading.Event()
         self.search_cancel = threading.Event()
+        self.search_gio_cancel = Gio.Cancellable()
+        gio_cancel = self.search_gio_cancel
+        self.search_warnings = []
+        self.search_warning.set_revealed(False)
+        remote = self.remote_file
+        if remote is not None:
+            self.stop_remote_listing()
+            if self.monitor is not None:
+                self.monitor.cancel()
+                self.monitor = None
         cancel = self.search_cancel
         self.search_recursive_active = True
         self.search_finished = False
@@ -747,7 +782,23 @@ class Pane(Gtk.Box):
         def run():
             batch = []
             found = []
-            for path in folder_search.matching_paths(folder, needle, cancel.is_set, self.window.hidden):
+            def warning(text):
+                if len(self.search_warnings) < 20:
+                    self.search_warnings.append(text)
+            if remote is not None:
+                for row in folder_search.matching_files(remote, needle, gio_cancel, self.window.hidden, warning):
+                    if cancel.is_set():
+                        return
+                    batch.append(row)
+                    if len(batch) >= 24:
+                        self.deliver(self.add_search_rows, cancel, generation, serial, batch)
+                        batch = []
+                if batch:
+                    self.deliver(self.add_search_rows, cancel, generation, serial, batch)
+                self.deliver(self.finish_search, cancel, generation, serial)
+                return
+            for path in folder_search.matching_paths(folder, needle, cancel.is_set, self.window.hidden,
+                                                     allow_empty=True, warning=warning):
                 if cancel.is_set():
                     return
                 try:
@@ -782,10 +833,11 @@ class Pane(Gtk.Box):
             return False
         additions = []
         for row in rows:
-            key = str(row.path)
+            remote = getattr(row, 'gio_file', None)
+            key = remote.get_uri() if remote is not None else str(row.path)
             if key not in self.items:
                 item = Item(row)
-                item.search_parent = str(row.path.parent.relative_to(self.folder))
+                item.search_parent = remote.get_parent().get_parse_name() if remote is not None else str(row.path.parent.relative_to(self.folder))
                 self.items[key] = item
                 additions.append(item)
         if additions:
@@ -808,9 +860,14 @@ class Pane(Gtk.Box):
             return False
         self.search_finished = True
         self.set_loading(False)
+        self.search_warning.set_revealed(bool(self.search_warnings))
         self.update_search_empty()
         self.update_panel_status()
         return False
+
+    def show_search_warnings(self, *_):
+        from . import dialogs
+        dialogs.message(self.window, tr('Recherche partielle'), '\n'.join(self.search_warnings))
 
     def make_loading_indicator(self):
         box = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
@@ -877,7 +934,7 @@ class Pane(Gtk.Box):
             if index == 14:
                 from .i18n import date_text
 
-                value = date_text(item.row.modified_ns)
+                value = date_text(item.row.modified_ns, self.window.state.settings['date_format'])
             if index == 0:
                 names = child.get_last_child()
                 display = names.get_child_by_name('display')
@@ -1006,7 +1063,15 @@ class Pane(Gtk.Box):
         editor.name_stack = names
         editor.display_label = display
         editor.connect('notify::editing', self.inline_edit_finished)
-        names.add_named(display, 'display')
+        display_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        display_box.name_label = display
+        display_box.caption_label = Gtk.Label(xalign=0.5, justify=Gtk.Justification.CENTER,
+                                             ellipsize=Pango.EllipsizeMode.END, css_classes=['dim-label'])
+        display_box.caption_label.set_lines(3)
+        display_box.caption_label.set_width_chars(1)
+        display_box.append(display)
+        display_box.append(display_box.caption_label)
+        names.add_named(display_box, 'display')
         names.add_named(editor, 'edit')
         box.append(names)
         self.add_file_drag_source(box, self.grid)
@@ -1041,11 +1106,29 @@ class Pane(Gtk.Box):
             text = str(item.row.values[0]) if self.is_trash or self.remote_file is not None else item.path.name
             if not label.get_editing():
                 label.set_text(text)
-                display.set_label(
+                display.name_label.set_label(
                     f'{text}\n{item.search_parent}'
                     if item.search_parent and item.search_parent != '.'
                     else text
                 )
+                captions = []
+                for column in self.window.state.settings['icon_captions']:
+                    if column == -1:
+                        continue
+                    if column == 14:
+                        from .i18n import date_text
+                        value = date_text(item.row.modified_ns, self.window.state.settings['date_format'])
+                    else:
+                        value = self.value(item, column)
+                    if column == 1:
+                        from .i18n import size_text
+                        value = size_text(value)
+                    if value:
+                        captions.append(str(value))
+                display.caption_label.set_label('\n'.join(captions))
+                display.caption_label.set_visible(bool(captions))
+                display.name_label.record = item
+                display.caption_label.record = item
                 display.set_tooltip_text(str(item.path) if self.search_recursive_active else text)
                 label.set_visible(False)
                 names.set_visible_child_name('display')
@@ -1119,8 +1202,11 @@ class Pane(Gtk.Box):
         return False
 
     def start_inline_rename(self, item):
-        item.editing = True
-        item.revision += 1
+        if self.closed:
+            return None
+        # Keep the entry point used by F2, with Nautilus's popover behavior.
+        from .rename_popover import show_rename
+        return show_rename(self, item)
 
     def wheel(self, controller, dx, dy):
         if not controller.get_current_event_state() & Gdk.ModifierType.CONTROL_MASK:
@@ -1144,6 +1230,38 @@ class Pane(Gtk.Box):
         self.grid.set_min_columns(columns)
         self.grid.set_max_columns(columns)
 
+    def remember_folder_style(self):
+        settings = self.window.state.settings
+        if not settings['remember_folder_view'] or not self.folder_style_ready or self.restoring_folder_style:
+            return
+        from .session import location
+        sorter = self.view.get_sorter()
+        column = sorter.get_primary_sort_column()
+        style = dict(view=self.local_view, column=self.columns.index(column) if column in self.columns else 0,
+                     descending=sorter.get_primary_sort_order() == Gtk.SortType.DESCENDING)
+        uri = location(self)
+        if uri and settings['folder_views'].get(uri) != style:
+            settings['folder_views'][uri] = style
+            self.window.state.save()
+
+    def restore_folder_style(self):
+        self.restoring_folder_style = True
+        try:
+            settings = self.window.state.settings
+            from .session import location
+            style = settings['folder_views'].get(location(self), {}) if settings['remember_folder_view'] else {}
+            if isinstance(style, dict):
+                mode = style.get('view')
+                if mode in ('details', 'icons'):
+                    self.stack.set_visible_child_name(mode)
+                column = style.get('column')
+                if type(column) is int and 0 <= column < len(self.columns):
+                    self.view.sort_by_column(self.columns[column], Gtk.SortType.DESCENDING
+                                             if style.get('descending') is True else Gtk.SortType.ASCENDING)
+        finally:
+            self.restoring_folder_style = False
+            self.folder_style_ready = True
+
     def grid_view_changed(self, *_args):
         mode = self.stack.get_visible_child_name()
         if mode in ('icons', 'details'):
@@ -1152,6 +1270,7 @@ class Pane(Gtk.Box):
             if views[self.width_slot] != mode:
                 views[self.width_slot] = mode
                 self.window.state.save()
+        self.remember_folder_style()
         if mode == 'icons':
             GLib.idle_add(self.update_grid_columns)
 
@@ -1186,16 +1305,15 @@ class Pane(Gtk.Box):
 
     def update_panel_status(self):
         """Keep each pane's count, error total, and free space with its own view."""
+        index = getattr(self, 'status_index', None)
+        if index is not None:
+            self.panel_count.set_label(index.text(self.selected()))
+        else:
+            rows = [self.filtered.get_item(i).row for i in range(self.filtered.get_n_items())]
+            self.panel_count.set_label(summarize(rows, [item.row for item in self.selected()]))
         if self.remote_file is not None:
-            directories = sum(self.filtered.get_item(i).row.is_dir for i in range(self.filtered.get_n_items()))
-            self.panel_count.set_label(
-                f'{directories} {tr("dossier" if directories == 1 else "dossiers")}, '
-                f'{self.filtered.get_n_items() - directories} {tr("fichier" if self.filtered.get_n_items() - directories == 1 else "fichiers")}'
-            )
             self.panel_free.set_label(self.remote_file.get_uri())
             return
-        rows = [self.filtered.get_item(index).row for index in range(self.filtered.get_n_items())]
-        self.panel_count.set_label(summarize(rows, [item.row for item in self.selected()]))
         self.update_search_empty()
         folder = str(self.folder)
         if folder != self.status_folder:
@@ -1324,7 +1442,7 @@ class Pane(Gtk.Box):
         self.window.context_menu(view, x, y, item is None)
 
     def add_file_drag_source(self, widget, view):
-        source = Gtk.DragSource(actions=Gdk.DragAction.COPY | Gdk.DragAction.MOVE)
+        source = Gtk.DragSource(actions=Gdk.DragAction.COPY | Gdk.DragAction.MOVE | Gdk.DragAction.LINK)
         source.connect('prepare', self.item_drag_prepare, view)
         source.connect('drag-begin', self.drag_begin)
         source.connect('drag-end', self.drag_end)
@@ -1408,40 +1526,57 @@ class Pane(Gtk.Box):
         self.drag_end()
         return False
 
-    def drop_action_for(self, paths):
-        """Match Files/Nautilus: move on one volume, copy to another."""
+    def drop_destination(self, x, y, view):
+        item = self.picked(view, x, y)
+        if item is not None and item.row.is_dir:
+            return item.file
+        return self.remote_file or Gio.File.new_for_path(str(self.folder))
+
+    def drop_action_for(self, paths, destination=None):
         try:
-            destination_device = self.folder.stat().st_dev
-            return (
-                Gdk.DragAction.MOVE
-                if all(path.stat().st_dev == destination_device for path in paths)
-                else Gdk.DragAction.COPY
-            )
+            destination_device = (Path(destination.get_path()) if destination and destination.get_path()
+                                  else self.folder).stat().st_dev
+            return (Gdk.DragAction.MOVE if paths and all(path.stat().st_dev == destination_device
+                                                       for path in paths) else Gdk.DragAction.COPY)
         except OSError:
-            # An unreadable mount must never cause a destructive default.
             return Gdk.DragAction.COPY
+
+    def negotiated_drop_action(self, target, sources, destination):
+        state = target.get_current_event_state()
+        control = bool(state & Gdk.ModifierType.CONTROL_MASK)
+        shift = bool(state & Gdk.ModifierType.SHIFT_MASK)
+        if control and shift:
+            return Gdk.DragAction.LINK
+        if control:
+            return Gdk.DragAction.COPY
+        if shift:
+            return Gdk.DragAction.MOVE
+        drop = target.get_current_drop()
+        drag = drop.get_drag() if drop else None
+        if drag and drag.get_selected_action() in (Gdk.DragAction.COPY, Gdk.DragAction.MOVE, Gdk.DragAction.LINK):
+            return drag.get_selected_action()
+        paths = [Path(file.get_path()) for file in sources if file.get_path()]
+        return self.drop_action_for(paths, destination) if len(paths) == len(sources) else Gdk.DragAction.COPY
 
     def drop(self, target, files, x, y, view):
         if self.is_trash:
             return False
+        destination = self.drop_destination(x, y, view)
         self.clear_drop()
-        # The other pane is always the destination.  Same-volume drops move;
-        # a different mounted volume receives a copy, without a dialog.
-        if getattr(self.window, 'drag_source_pane', None) is self:
-            return False
         sources = list(files.get_files())
-        if self.remote_file is not None or any(not f.is_native() for f in sources):
-            source = getattr(self.window, 'drag_source_pane', None)
-            drag = target.get_current_drop().get_drag() if target.get_current_drop() else None
-            action = drag.get_selected_action() if drag else Gdk.DragAction.COPY
-            destination = self.remote_file or Gio.File.new_for_path(str(self.folder))
-            self.window.gio_transfer(sources, destination, move=action == Gdk.DragAction.MOVE)
-            return True
-        paths = [Path(f.get_path()) for f in sources if f.get_path()]
-        if not paths:
+        if not sources or any(destination.equal(file) or destination.has_prefix(file) for file in sources):
             return False
-        action = self.drop_action_for(paths)
-        self.window.transfer(paths, self.folder, copy=action == Gdk.DragAction.COPY)
+        action = self.negotiated_drop_action(target, sources, destination)
+        if action == Gdk.DragAction.MOVE and all(file.get_parent() and file.get_parent().equal(destination)
+                                               for file in sources):
+            return False
+        if action == Gdk.DragAction.LINK:
+            self.window.create_file_links(sources, destination)
+        elif destination.get_path() and all(file.get_path() for file in sources):
+            self.window.prepare_paste([Path(file.get_path()) for file in sources],
+                                      Path(destination.get_path()), action == Gdk.DragAction.MOVE)
+        else:
+            self.window.gio_transfer(sources, destination, move=action == Gdk.DragAction.MOVE)
         return True
 
     def clear_drop(self):
@@ -1450,17 +1585,33 @@ class Pane(Gtk.Box):
             self.drop_widget = None
 
     def drop_motion(self, target, x, y, view):
-        # Highlight the complete destination pane.  It makes the target just
-        # as clear in Details and Icons views, even over empty space.
-        if getattr(self.window, 'drag_source_pane', None) is self:
+        if self.is_trash:
             return Gdk.DragAction(0)
-        if view != self.drop_widget:
-            self.clear_drop()
-            self.drop_widget = view
-            self.drop_widget.add_css_class('drop-destination')
+        destination = self.drop_destination(x, y, view)
         source = getattr(self.window, 'drag_source_pane', None)
-        paths = [item.path for item in source.selected()] if source is not None else []
-        return Gdk.DragAction.COPY if self.remote_file is not None else self.drop_action_for(paths) if paths else Gdk.DragAction.COPY
+        files = [item.file for item in source.selected()] if source is not None else []
+        if any(destination.equal(file) or destination.has_prefix(file) for file in files):
+            self.clear_drop()
+            return Gdk.DragAction(0)
+        item = self.picked(view, x, y)
+        widget = view
+        if item is not None and item.row.is_dir:
+            picked = view.pick(x, y, Gtk.PickFlags.DEFAULT)
+            while picked is not None and picked is not view:
+                if getattr(picked, 'record', None) is item:
+                    widget = picked
+                picked = picked.get_parent()
+        if widget is not self.drop_widget:
+            self.clear_drop()
+            self.drop_widget = widget
+            widget.add_css_class('drop-destination')
+        state = target.get_current_event_state()
+        if state & Gdk.ModifierType.CONTROL_MASK:
+            return Gdk.DragAction.LINK if state & Gdk.ModifierType.SHIFT_MASK else Gdk.DragAction.COPY
+        if state & Gdk.ModifierType.SHIFT_MASK:
+            return Gdk.DragAction.MOVE
+        paths = [Path(file.get_path()) for file in files if file.get_path()]
+        return self.drop_action_for(paths, destination) if destination.get_path() else Gdk.DragAction.COPY
 
     def up(self):
         if self.remote_file is not None:
@@ -1524,12 +1675,14 @@ class Pane(Gtk.Box):
         self.is_trash = False
         self.is_starred = False
         self.remote_file = None
+        self.folder_style_ready = False
         self.folder = folder
         self.location.set_text(str(folder))
         self.location_bar.update(folder)
         self.items.clear()
         self.store.remove_all()
         self.stack.set_visible_child_name(self.local_view)
+        self.restore_folder_style()
         self.update_panel_status()
         self.set_tab_title(folder.name or '/')
         self.restore_selection = set()
@@ -1557,6 +1710,8 @@ class Pane(Gtk.Box):
     def stop_loading(self):
         self.cancel.set()
         self.search_cancel.set()
+        if self.search_gio_cancel is not None:
+            self.search_gio_cancel.cancel()
         self.stop_remote_listing()
         self.set_loading(False)
 
@@ -1581,18 +1736,21 @@ class Pane(Gtk.Box):
             self.monitor.cancel()
             self.monitor = None
         self.is_trash = self.is_starred = False
+        self.folder_style_ready = False
         self.remote_file = file
         self.remote_entries = []
         self.items.clear()
         self.store.remove_all()
         network_root = file.get_uri().rstrip('/') == 'network:'
-        label = tr('Réseau') if network_root else file.get_basename() or file.get_parse_name()
+        label = tr('Réseau') if network_root else tr('Récents') if file.get_uri().startswith('recent:') else file.get_basename() or file.get_parse_name()
         self.remote_connect.set_visible(network_root)
         self.location_bar.update_virtual(label, file.get_uri())
         self.set_tab_title(label)
-        self.search_subfolders.set_sensitive(False)
+        self.search_subfolders.set_sensitive(not network_root and not file.get_uri().startswith('recent:'))
         self.duplicates_button.set_visible(False)
         self.stack.set_visible_child_name('remote' if network_root else self.local_view)
+        if not network_root:
+            self.restore_folder_style()
         self.remote_empty_title.set_label(tr('Chargement…'))
         self.remote_empty_detail.set_label('')
         self.remote_content.set_visible_child_name('empty')
@@ -2220,7 +2378,13 @@ class Pane(Gtk.Box):
         if self.closed:
             return
         self.stop_remote_listing()
+        if self.search_gio_cancel is not None:
+            self.search_gio_cancel.cancel()
+        popover = getattr(self, 'rename_popover', None)
+        if popover is not None:
+            popover.popdown()
         self.closed = True
+        self.status_index.close()
         self.cancel.set()
         self.search_cancel.set()
         if self.search_timer:

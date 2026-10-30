@@ -6,6 +6,7 @@ modes, tag names and column keys are plain strings and must never be wrapped.
 
 import json, os
 from pathlib import Path
+from functools import lru_cache
 
 CATALOG = json.loads(Path(__file__).with_name('en.json').read_text())
 language = 'auto'
@@ -34,24 +35,41 @@ def trf(text, *values):
     return text
 
 
-def date_text(timestamp_ns):
-    from datetime import datetime, timedelta
+@lru_cache(maxsize=1)
+def clock_settings():
+    from gi.repository import Gio
+    source = Gio.SettingsSchemaSource.get_default()
+    schema = source.lookup('org.gnome.desktop.interface', True) if source else None
+    return Gio.Settings.new_full(schema, None, None) if schema else None
 
+
+def date_text(timestamp_ns, style='simple'):
+    """GLib regional dates; Mirivue preference is separate from Nautilus.
+
+    Follows Nautilus's documented simple/detailed distinction. Nautilus's
+    internal ICU formatter is not a public GTK/GIO API; this uses GLib.
+    """
     if timestamp_ns is None:
         return '—'
+    from gi.repository import GLib
     try:
-        value = datetime.fromtimestamp(timestamp_ns / 1e9)
-    except (OSError, ValueError, OverflowError):
+        value = GLib.DateTime.new_from_unix_local(int(timestamp_ns // 1_000_000_000))
+        if value is None:
+            return '—'
+    except (ValueError, OverflowError):
         return '—'
-    english = tr('Nom') == 'Name'
-    today = datetime.now().date()
-    if value.date() == today:
-        prefix = 'Today' if english else 'Aujourd’hui'
-    elif value.date() == today - timedelta(days=1):
-        prefix = 'Yesterday' if english else 'Hier'
-    else:
-        prefix = value.strftime('%m/%d/%Y' if english else 'le %d/%m/%Y')
-    return prefix + (' at ' if english else ' à ') + value.strftime('%H:%M:%S')
+    settings = clock_settings()
+    clock = '%I:%M %p' if settings and settings.get_string('clock-format') == '12h' else '%H:%M'
+    if style == 'detailed':
+        return value.format('%x ' + ('%I:%M:%S %p' if '%p' in clock else '%H:%M:%S'))
+    today = GLib.DateTime.new_now_local()
+    stamp = (value.get_year(), value.get_month(), value.get_day_of_month())
+    yesterday = today.add_days(-1)
+    if stamp == (today.get_year(), today.get_month(), today.get_day_of_month()):
+        return tr('Aujourd’hui') + ' ' + value.format(clock)
+    if stamp == (yesterday.get_year(), yesterday.get_month(), yesterday.get_day_of_month()):
+        return tr('Hier') + ' ' + value.format(clock)
+    return value.format('%x')
 
 
 def size_text(value):

@@ -244,6 +244,7 @@ class InterfaceConventionTests(unittest.TestCase):
                 local_view='details',
                 window=SimpleNamespace(state=state),
                 update_grid_columns=lambda: False,
+                remember_folder_style=lambda: None,
                 stack=SimpleNamespace(get_visible_child_name=lambda: 'icons'),
             )
             Pane.grid_view_changed(pane)
