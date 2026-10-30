@@ -10,6 +10,14 @@
 - Recherche récursive sans texte avec critères, recherche de noms GVfs et signalement des erreurs d’accès.
 - Raccourcis Nautilus complétés ; la molette des images reste active sans régler le lecteur audio/vidéo.
 
+- Fusion explicite des dossiers, décisions par conflit et conservation des éléments ignorés.
+- Menus et réorganisation des signets, disponibilité native des emplacements récents.
+- Modèles XDG Templates surveillés par GIO, création sans modifier le modèle.
+- Restauration facultative des onglets et des deux panneaux, sans enregistrer les mots de passe d'URI.
+- Préférences propres à Mirivue pour les vues par dossier, les légendes et les dates régionales.
+- Compteurs incrémentaux et correction du contrôle des formats du presse-papiers.
+- Limites et choix encore ouverts documentés dans NATIF-GNOME-0.6.24.md.
+
 ## 0.6.23 — 30 octobre 2026
 
 - Onglets natifs Adw.TabView/TabBar : déplacement, détachement, réouverture et aperçu adaptatif.

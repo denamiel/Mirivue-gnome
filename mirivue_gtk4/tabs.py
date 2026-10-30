@@ -21,6 +21,8 @@ class TabGroup(Gtk.Box):
         for name, label, callback in (
             ('close', 'Fermer l’onglet', self.close_context),
             ('close-others', 'Fermer les autres onglets', self.close_others),
+            ('move-left', 'Déplacer l’onglet vers la gauche', lambda: self.move(False)),
+            ('move-right', 'Déplacer l’onglet vers la droite', lambda: self.move(True)),
             ('restore', 'Rouvrir l’onglet fermé', self.restore),
             ('detach', 'Déplacer l’onglet vers une nouvelle fenêtre', self.detach),
         ):
@@ -63,14 +65,22 @@ class TabGroup(Gtk.Box):
 
     def selected_changed(self, *_):
         page = self.view.get_selected_page()
-        if page and not self.window.closed:
-            self.window.activate_pane(page.get_child())
+        if page and not self.window.closed and self.get_visible():
+            pane = page.get_child()
+            pending = getattr(pane, 'pending_location', None)
+            if pending is not None:
+                pane.pending_location = None
+                self.window.navigate_file(pane, pending)
+            self.window.activate_pane(pane)
 
     def setup_menu(self, _view, page):
         self.context_page = page
         self.actions.lookup_action('restore').set_enabled(bool(self.closed_tabs))
         self.actions.lookup_action('close-others').set_enabled(self.get_n_pages() > 1)
         self.actions.lookup_action('detach').set_enabled(page is not None)
+        position = self.view.get_page_position(page) if page else -1
+        self.actions.lookup_action('move-left').set_enabled(position > 0)
+        self.actions.lookup_action('move-right').set_enabled(0 <= position < self.get_n_pages() - 1)
 
     def selected_page(self):
         return self.context_page or self.view.get_selected_page()
@@ -79,6 +89,11 @@ class TabGroup(Gtk.Box):
         page = self.selected_page()
         if page:
             self.view.close_page(page)
+
+    def move(self, right):
+        page = self.selected_page()
+        if page:
+            (self.view.reorder_forward if right else self.view.reorder_backward)(page)
 
     def close_others(self):
         page = self.selected_page()
@@ -94,7 +109,8 @@ class TabGroup(Gtk.Box):
             self.window.request_quit()
             return True
         if pane is not self.placeholder:
-            location = (pane.remote_file.get_uri() if pane.remote_file is not None else
+            location = (pane.pending_location.get_uri() if getattr(pane, 'pending_location', None) is not None else
+                        pane.remote_file.get_uri() if pane.remote_file is not None else
                         'trash:///' if pane.is_trash else 'starred:///' if pane.is_starred else
                         str(pane.folder))
             self.closed_tabs.append((location, list(pane.history), pane.history_position))
@@ -167,7 +183,7 @@ class TabGroup(Gtk.Box):
 
     def create_window(self, _view):
         from .app import MirivueWindow
-        window = MirivueWindow(self.window.get_application(), state=self.window.state)
+        window = MirivueWindow(self.window.get_application(), state=self.window.state, restore_session=False)
         group = window.tab_groups[0]
         group.placeholder = group.get_nth_page(0)
         # A detached tab is a new window, with one browser pane.

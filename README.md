@@ -6,14 +6,15 @@ KIO ou KDE.
 
 ## Version et état
 
-**0.6.24** modernise les onglets avec libadwaita et partage les vues de fichiers
-avec les dossiers GVfs. Le renommage présente ses changements et conflits ;
-la recherche par nom et le résumé suivent les éléments réellement affichés.
-Les réglages de Mirivue restent indépendants de ceux de Nautilus.
+**0.6.24** rapproche les opérations de fichiers des conventions de Nautilus :
+renommage individuel par popover, transferts et annulation groupés, propriétés
+récursives GIO, recherche récursive et modèles de documents. La restauration des
+onglets et les préférences par dossier sont facultatives et propres à Mirivue.
 
-La validation native couvre Ubuntu 24.04, Fedora 44/45 et Arch/CachyOS.
-La comparaison manuelle sous GNOME/Wayland et les serveurs SMB/SFTP réels
-ne sont pas reproduits par les tests Xvfb. Voir [NATIF-GNOME-0.6.23.md](NATIF-GNOME-0.6.23.md).
+Les tests utilisent GTK/GIO sous Xvfb. Les résultats par distribution doivent
+être contrôlés dans GitHub Actions avant publication. Une comparaison manuelle
+GNOME/Wayland et des serveurs SMB/SFTP réels reste nécessaire.
+Voir [NATIF-GNOME-0.6.24.md](NATIF-GNOME-0.6.24.md) pour la portée et les limites.
 
 ## Licence
 

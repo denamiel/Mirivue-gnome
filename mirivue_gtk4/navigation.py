@@ -76,7 +76,7 @@ class LocationBar(Gtk.Box):
             icon_name='view-more-symbolic', tooltip_text=tr('Menu du dossier courant')
         )
         self.menu_button.add_css_class('flat')
-        self.menu_button.set_menu_model(self.path_menu())
+        self.menu_button.set_menu_model(self.path_menu(self.pane.window.templates.menu if hasattr(self.pane.window, 'templates') else None))
         self.trailing_spacer = Gtk.Box(hexpand=True)
         self.crumbs.append(self.trailing_spacer)
         self.crumbs.append(self.menu_button)
@@ -91,12 +91,12 @@ class LocationBar(Gtk.Box):
         self.trailing_spacer.add_controller(click)
 
     @staticmethod
-    def path_menu():
+    def path_menu(creation=None):
         menu = Gio.Menu()
         create = Gio.Menu()
         create.append(tr('Dossier…'), 'win.new-folder')
         create.append(tr('Fichier texte…'), 'win.new-text-file')
-        menu.append_submenu(tr('Créer un nouveau'), create)
+        menu.append_submenu(tr('Créer un nouveau'), creation if creation is not None else create)
         for section in PATHBAR_MENU_SECTIONS:
             group = Gio.Menu()
             for label, action in section:

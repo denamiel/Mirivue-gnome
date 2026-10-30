@@ -23,6 +23,7 @@ BuildRequires:  poppler-glib
 BuildRequires:  xorg-x11-server-Xvfb
 BuildRequires:  xorg-x11-xauth
 BuildRequires:  dbus-daemon
+BuildRequires:  gvfs
 
 Requires:       python3-gobject
 Requires:       python3-cairo

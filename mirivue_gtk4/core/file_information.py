@@ -5,7 +5,7 @@ ATTRIBUTES = 'standard::type,standard::size,standard::content-type,standard::nam
 
 
 def summarize_files(files, cancellable):
-    files = list(files)
+    files = list({file.get_uri(): file for file in files}.values())
     # A selected child must not be counted twice with its selected parent.
     roots = [file for file in files if not any(file.has_prefix(other) for other in files if not file.equal(other))]
     result = dict(files=0, folders=0, bytes=0, types=set(), locations=set(), errors=[])

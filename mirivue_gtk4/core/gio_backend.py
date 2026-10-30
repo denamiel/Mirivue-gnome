@@ -11,11 +11,16 @@ def _gio():
     return Gio
 
 
+def _glib():
+    from gi.repository import GLib
+    return GLib
+
+
 def local_icon(path, row=None):
     """Ask the file backend for its actual content icon, off the UI thread."""
     Gio = _gio()
     try:
-        from gi.repository import GLib
+        GLib = _glib()
 
         info = Gio.File.new_for_path(str(path)).query_info(
             'standard::icon,standard::content-type,standard::type,standard::is-hidden,standard::is-backup,metadata::custom-icon',
@@ -58,7 +63,7 @@ def enrich_file_info(row):
 
 
 DIRECTORY_ATTRIBUTES = ('standard::name,standard::display-name,standard::type,standard::size,'
-                        'standard::icon,standard::content-type,standard::is-hidden,standard::is-backup,'
+                        'standard::icon,standard::content-type,standard::is-hidden,standard::is-backup,standard::target-uri,'
                         'time::modified,thumbnail::path,thumbnail::is-valid,'
                         'access::can-rename,access::can-delete,access::can-trash')
 
@@ -68,7 +73,8 @@ def row_from_info(folder, info):
     from pathlib import Path
     from .metadata import Video, quantity
     Gio = _gio()
-    file = folder.get_child(info.get_name())
+    target_uri = info.get_attribute_string('standard::target-uri') if info.has_attribute('standard::target-uri') else None
+    file = Gio.File.new_for_uri(target_uri) if target_uri else folder.get_child(info.get_name())
     directory = info.get_file_type() == Gio.FileType.DIRECTORY
     # Path supplies only a basename to code that renders names. Every remote
     # operation must use gio_file, and never hand this display-only path to I/O.
@@ -139,6 +145,8 @@ def _copy_tree(source, target, cancellable, progress):
         copied = target.query_info('standard::size', Gio.FileQueryInfoFlags.NONE, cancellable).get_size()
         if copied != info.get_size():
             raise IOError(tr('Copie distante incomplète.'))
+    elif kind == Gio.FileType.SYMBOLIC_LINK:
+        source.copy(target, Gio.FileCopyFlags.NOFOLLOW_SYMLINKS, cancellable, None, None)
     else:
         raise ValueError(tr('Type de fichier distant non pris en charge.'))
 
@@ -165,12 +173,12 @@ def _tree_manifest(root, cancellable, with_identity=False):
 
     def visit(file, relative):
         info = file.query_info(
-            'standard::type,standard::size,time::modified,time::modified-usec,etag::value',
+            'standard::type,standard::size,standard::symlink-target,time::modified,time::modified-usec,etag::value',
             Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS,
             cancellable,
         )
         kind = info.get_file_type()
-        if kind not in (Gio.FileType.DIRECTORY, Gio.FileType.REGULAR):
+        if kind not in (Gio.FileType.DIRECTORY, Gio.FileType.REGULAR, Gio.FileType.SYMBOLIC_LINK):
             raise ValueError(tr('Type de fichier distant non pris en charge.'))
         identity = (
             (
@@ -181,7 +189,8 @@ def _tree_manifest(root, cancellable, with_identity=False):
             if with_identity
             else ()
         )
-        entries[relative] = (kind, info.get_size() if kind == Gio.FileType.REGULAR else 0, *identity)
+        entries[relative] = (kind, info.get_symlink_target() if kind == Gio.FileType.SYMBOLIC_LINK
+                             else info.get_size() if kind == Gio.FileType.REGULAR else 0, *identity)
         if kind == Gio.FileType.DIRECTORY:
             for _, child, _, _ in browse(file, cancellable):
                 visit(child, relative + '/' + child.get_basename())
@@ -227,24 +236,27 @@ def remove(file, permanent=False, cancelled=lambda: False):
     visit(file)
 
 
-def transfer(sources, destination, move=False, cancelled=lambda: False, progress=lambda done, total: None):
+def transfer(sources, destination, move=False, cancelled=lambda: False, progress=lambda done, total: None, names=None):
     """Never overwrite. Publish a complete tree before removing its source."""
     Gio = _gio()
     results = []
     for source in sources:
         if cancelled():
             raise InterruptedError()
-        name = source.get_basename()
+        name = names.get(source.get_uri(), source.get_basename()) if names else source.get_basename()
         if not name or name in ('.', '..'):
             raise ValueError(tr('Nom de source invalide.'))
         target = destination.get_child(name)
+        if move and source.get_path():
+            from .file_safety import check_removal
+            check_removal(source.get_path(), recursive=True)
         if target.query_exists(None):
             raise FileExistsError(trf('Un élément porte déjà ce nom dans la destination : \x1f0\x1f', name))
         if source.equal(target) or destination.has_prefix(source):
             raise ValueError(tr('Destination située dans la source.'))
         operation = Gio.Cancellable()
 
-        def update(done, total):
+        def update(done, total, *_data):
             if cancelled():
                 operation.cancel()
             progress(done, total)
@@ -263,7 +275,7 @@ def transfer(sources, destination, move=False, cancelled=lambda: False, progress
                     raise
                 # Only an unsupported recursive move warrants a staged copy.
                 # Permission, I/O, and network errors must reach the caller.
-                from gi.repository import GLib
+                GLib = _glib()
 
                 if not isinstance(error, GLib.Error) or not error.matches(
                     Gio.io_error_quark(), Gio.IOErrorEnum.WOULD_RECURSE

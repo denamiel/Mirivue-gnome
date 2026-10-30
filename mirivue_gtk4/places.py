@@ -103,3 +103,15 @@ def migrate_legacy_favorites(paths: list[str]) -> int:
     if added:
         write_bookmarks(bookmarks)
     return added
+
+
+def reorder_bookmark(uri, anchor_uri, after=False):
+    entries = read_bookmarks()
+    if uri == anchor_uri or not any(value == uri for value, _ in entries) or not any(value == anchor_uri for value, _ in entries):
+        return False
+    moving = next(entry for entry in entries if entry[0] == uri)
+    entries = [entry for entry in entries if entry[0] != uri]
+    index = next(i for i, entry in enumerate(entries) if entry[0] == anchor_uri)
+    entries.insert(index + int(after), moving)
+    write_bookmarks(entries)
+    return True

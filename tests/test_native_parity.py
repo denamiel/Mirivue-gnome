@@ -34,7 +34,7 @@ class NativeParityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         Gtk.init()
-        cls.app = Adw.Application(application_id='org.pdenams.Mirivue.NativeTests',
+        cls.app = Adw.Application(application_id='org.pdenams.Mirivue.' + cls.__name__,
                                   flags=Gio.ApplicationFlags.NON_UNIQUE)
         cls.app.register(None)
 

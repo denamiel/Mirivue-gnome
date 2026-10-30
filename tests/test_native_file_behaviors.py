@@ -17,6 +17,34 @@ class NativeFileBehaviorsTests(unittest.TestCase):
     setUp = support.NativeParityTests.setUp
     tearDown = support.NativeParityTests.tearDown
 
+    def test_native_links_use_available_names_and_grouped_undo(self):
+        source = self.folder / 'original.txt'
+        source.write_text('keep original')
+        file = Gio.File.new_for_path(str(source))
+        self.window.create_file_links([file], Gio.File.new_for_path(str(self.folder)))
+        from mirivue_gtk4.i18n import trf
+        link = self.folder / trf('Lien vers \x1f0\x1f', source.name)
+        support.until(lambda: link.is_symlink() and bool(self.window.undo_manager.undo_stack))
+        self.window.reverse_file_operation(False)
+        support.until(lambda: not link.is_symlink() and bool(self.window.undo_manager.redo_stack))
+        self.assertEqual(source.read_text(), 'keep original')
+        self.window.reverse_file_operation(True)
+        support.until(lambda: link.is_symlink())
+        self.assertEqual(link.read_text(), 'keep original')
+
+    def test_regional_dates_honor_clock_preference_in_both_styles(self):
+        from mirivue_gtk4.i18n import date_text
+        noon = GLib.DateTime.new_now_local().to_unix() * 1_000_000_000
+        clock = SimpleNamespace(get_string=lambda _key: '12h')
+        with patch('mirivue_gtk4.i18n.clock_settings', return_value=clock):
+            self.assertRegex(date_text(noon), r'[AP]M$')
+            self.assertRegex(date_text(noon, 'detailed'), r'[AP]M$')
+
+    def test_text_clipboard_does_not_enable_file_paste_or_raise(self):
+        self.window.get_clipboard().set('plain text')
+        self.assertFalse(self.window.can_paste())
+        self.window.build_context_menu()
+
     def test_f2_popover_selects_stem_validates_and_renames(self):
         source = self.folder / 'été.mkv'
         source.write_text('original')
@@ -141,3 +169,109 @@ class NativeFileBehaviorsTests(unittest.TestCase):
                             ('open-folder-tabs', '<Control>Return'), ('terminal', '<Control>period')]:
             actual = [Gtk.accelerator_parse(value)[1:] for value in app.get_accels_for_action('win.' + action)]
             self.assertIn(Gtk.accelerator_parse(key)[1:], actual)
+
+    def test_session_restores_two_groups_and_does_not_store_passwords(self):
+        from mirivue_gtk4.app import MirivueWindow
+        from mirivue_gtk4.session import snapshot, location
+        first, second = self.folder / 'one', self.folder / 'two'
+        first.mkdir(); second.mkdir()
+        self.window.new_tab(first)
+        self.window.toggle_split()
+        self.window.new_tab(second)
+        self.state.settings['startup'] = 'session'
+        self.state.settings['tab_session'] = snapshot(self.window)
+        other = MirivueWindow(self.app, state=self.state)
+        other.present()
+        support.until(lambda: other.active.folder == second)
+        self.assertEqual([group.get_n_pages() for group in other.tab_groups], [2, 2])
+        self.assertTrue(other.tab_groups[1].get_visible())
+        self.assertIs(other.active.tabs, other.tab_groups[1])
+        lazy = other.tab_groups[0].get_nth_page(0)
+        self.assertIsNotNone(lazy.pending_location)
+        other.tab_groups[0].set_current_page(0)
+        support.until(lambda: lazy.pending_location is None and other.active is lazy)
+        saved = location(SimpleNamespace(pending_location=Gio.File.new_for_uri('sftp://user:secret@example.invalid/folder')))
+        self.assertEqual(saved, 'sftp://user@example.invalid/folder')
+
+    def test_folder_views_remain_mirivue_preferences_and_restore_independently(self):
+        pane = self.window.active
+        first, second = self.folder / 'first', self.folder / 'second'
+        first.mkdir(); second.mkdir()
+        self.state.settings['remember_folder_view'] = True
+        pane.open(first)
+        pane.stack.set_visible_child_name('icons')
+        pane.view.sort_by_column(pane.columns[1], Gtk.SortType.DESCENDING)
+        pane.open(second)
+        pane.stack.set_visible_child_name('details')
+        pane.view.sort_by_column(pane.columns[0], Gtk.SortType.ASCENDING)
+        pane.open(first)
+        self.assertEqual(pane.local_view, 'icons')
+        self.assertIs(pane.view.get_sorter().get_primary_sort_column(), pane.columns[1])
+        self.assertEqual(pane.view.get_sorter().get_primary_sort_order(), Gtk.SortType.DESCENDING)
+        pane.open(second)
+        self.assertEqual(pane.local_view, 'details')
+        self.assertIs(pane.view.get_sorter().get_primary_sort_column(), pane.columns[0])
+
+    def test_templates_populate_native_menu_and_copy_original_without_changing_it(self):
+        from mirivue_gtk4.templates import Templates
+        templates = self.root / 'templates'
+        (templates / 'nested').mkdir(parents=True)
+        source = templates / 'Note.txt'
+        source.write_text('template content')
+        (templates / 'nested' / 'Other.txt').write_text('other')
+        with patch('mirivue_gtk4.templates.GLib.get_user_special_dir', return_value=str(templates)):
+            provider = Templates(self.window)
+            try:
+                def ready():
+                    section = provider.menu.get_item_link(1, 'section') if provider.menu.get_n_items() > 1 else None
+                    return section is not None and section.get_n_items() == 2
+                support.until(ready)
+                self.window.new_from_template(Gio.File.new_for_path(str(source)))
+                support.until(lambda: (self.folder / 'Note.txt').exists())
+                self.assertIsNone(getattr(self.window.active, 'rename_popover', None))
+                self.assertEqual(source.read_text(), 'template content')
+                self.assertEqual((self.folder / 'Note.txt').read_text(), 'template content')
+            finally:
+                provider.close()
+
+    def test_status_selection_uses_incremental_model_totals(self):
+        path = self.folder / 'item.txt'
+        path.write_bytes(b'123')
+        pane = self.window.active
+        pane.open(self.folder)
+        support.until(lambda: str(path) in pane.items)
+        item = pane.items[str(path)]
+        item.row.sort_values[1] = 50
+        item.revision += 1
+        with patch.object(pane.filtered, 'get_item', side_effect=AssertionError('No complete recount on selection')):
+            text = pane.status_index.text([item])
+        self.assertIn('50', text)
+        self.assertNotIn('0 erreurs', text)
+
+    def test_bookmark_reordering_preserves_remote_uris_and_labels(self):
+        from mirivue_gtk4 import places
+        file = self.root / 'bookmarks'
+        with patch.object(places, 'bookmark_file', return_value=file):
+            places.write_bookmarks([('file:///one', 'One'), ('smb://server/share', 'Shared'), ('file:///two', 'Two')])
+            self.assertTrue(places.reorder_bookmark('smb://server/share', 'file:///two', True))
+            self.assertEqual(places.read_bookmarks(), [('file:///one', 'One'), ('file:///two', 'Two'), ('smb://server/share', 'Shared')])
+
+    def test_trash_undo_redo_uses_exact_gvfs_entry_when_available(self):
+        from mirivue_gtk4.core import trash
+        from mirivue_gtk4.core.undo import TrashRecord
+        try:
+            trash.rows()
+        except GLib.Error:
+            self.skipTest('GVfs Trash is not available in this isolated environment')
+        path = self.folder / 'trash-roundtrip.txt'
+        path.write_text('keep')
+        uri = trash.trash_tracked(path)
+        self.assertIsNotNone(uri)
+        manager = UndoManager()
+        manager.record_prepared(TrashRecord(path, uri, trash.entry_signature(uri)))
+        manager.undo()
+        self.assertEqual(path.read_text(), 'keep')
+        manager.redo()
+        self.assertFalse(path.exists())
+        manager.undo()
+        self.assertEqual(path.read_text(), 'keep')

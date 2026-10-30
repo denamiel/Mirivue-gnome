@@ -899,15 +899,12 @@ def preferences(parent):
         ['auto', 'fr', 'en'],
         ['Langue du système', 'Français', 'English'],
     )
-    if settings['startup'] == 'home':
-        settings['startup'] = 'custom'
-        settings['startup_path'] = str(Path.home())
     startup = combo(
         general,
         'Dossier au démarrage',
         'startup',
-        ['last', 'custom'],
-        ['Dernier dossier ouvert', 'Autre dossier'],
+        ['home', 'last', 'custom', 'session'],
+        ['Dossier personnel', 'Dernier dossier ouvert', 'Autre dossier', 'Onglets de la dernière fenêtre fermée'],
     )
     folder = Adw.EntryRow(title=tr('Dossier choisi'), text=settings['startup_path'] or str(Path.home()))
 
@@ -973,6 +970,11 @@ def preferences(parent):
         parent.apply_theme,
     )
     toggle(appearance, 'Afficher les miniatures', 'thumbnails', callback=thumbnails_changed)
+    toggle(appearance, 'Mémoriser la vue et le tri de chaque dossier', 'remember_folder_view',
+           callback=lambda enabled: parent.active.remember_folder_style() if enabled else None)
+    combo(appearance, 'Format des dates', 'date_format', ['simple', 'detailed'], ['Simple', 'Détaillé'],
+          lambda: [setattr(item, 'revision', item.revision + 1) for pane in parent.panes for item in pane.items.values()])
+
     combo(
         appearance,
         'Colonne Taille pour les dossiers',
@@ -987,6 +989,19 @@ def preferences(parent):
         'folders_first',
         callback=lambda enabled: parent.set_folders_first(enabled),
     )
+    caption_values = [-1, 1, 14, 17, 2, 3, 19, 20]
+    caption_labels = ['Aucune', 'Taille', 'Date de modification', 'Type de média', 'Durée', 'Résolution', 'Artiste', 'Album']
+    for index, title in enumerate(('Première information sous les icônes', 'Deuxième information sous les icônes', 'Troisième information sous les icônes')):
+        caption = Adw.ComboRow(title=tr(title), model=Gtk.StringList.new([tr(label) for label in caption_labels]),
+                               selected=caption_values.index(settings['icon_captions'][index]))
+        def changed(row, _prop, index=index):
+            settings['icon_captions'][index] = caption_values[row.get_selected()]
+            parent.state.save()
+            for pane in parent.panes:
+                for item in pane.items.values():
+                    item.revision += 1
+        caption.connect('notify::selected', changed)
+        appearance.add(caption)
     row = Adw.ActionRow(title=tr('Colonnes et disposition'))
     button = Gtk.Button(label=tr('Configurer'), valign=Gtk.Align.CENTER)
     button.connect('clicked', lambda *_: columns(parent))
@@ -2131,6 +2146,7 @@ def shortcuts(parent):
                         ('Couper', '<Control>x'),
                         ('Coller', '<Control>v'),
                         ('Tout sélectionner', '<Control>a'),
+                        ('Inverser la sélection', '<Control><Shift>i'),
                         ('Nouveau dossier', '<Control><Shift>n'),
                         ('Renommer', 'F2'),
                         ('Mettre à la corbeille', 'Delete'),
@@ -2171,7 +2187,10 @@ def shortcuts(parent):
                 (
                     'Onglets',
                     [
+                        ('Nouvelle fenêtre', '<Control>n'),
                         ('Nouvel onglet', '<Control>t'),
+                        ('Ouvrir dans de nouveaux onglets', '<Control>Return'),
+                        ('Ouvrir dans de nouvelles fenêtres', '<Shift>Return'),
                         ('Fermer l’onglet ou la fenêtre', '<Control>w'),
                         ('Rouvrir l’onglet fermé', '<Control><Shift>t'),
                         ('Onglet précédent', '<Control>Page_Up'),
@@ -2187,7 +2206,7 @@ def shortcuts(parent):
                     'Mirivue',
                     [
                         ('Menu principal', 'F10'),
-                        ('Ouvrir un terminal ici', '<Alt><Shift>F4'),
+                        ('Ouvrir un terminal ici', '<Control>period'),
                         ('Aide', 'F1'),
                         ('Préférences', '<Control>comma'),
                         ('Raccourcis clavier', '<Control>question'),

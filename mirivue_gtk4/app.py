@@ -2,7 +2,7 @@
 
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
-import os, shutil, subprocess, queue, json
+import os, shutil, subprocess, queue, json, threading
 import gi
 
 gi.require_version('Gtk', '4.0')
@@ -12,6 +12,7 @@ from . import __version__, i18n
 from .i18n import tr
 from .backend import State, MediaService, JobQueue
 from .tabs import TabGroup
+from .templates import Templates
 from .pane import Pane
 from .preview import Preview, Thumbnails
 from .indicator import StatusNotifier, appindicator_available
@@ -22,6 +23,7 @@ from .places import (
     migrate_legacy_favorites,
     rename_bookmark,
     add_bookmark_folders,
+    reorder_bookmark,
 )
 from .core import (
     metadata,
@@ -35,6 +37,7 @@ from .core import (
     archive_backend,
     associated,
     gio_backend,
+    directory_merge,
     trash as trash_service,
 )
 from .core.undo import UndoManager, RenameRecord, FolderRecord, TrashRecord, record_paths, individual_records
@@ -76,7 +79,7 @@ def standard_thumbnail(path):
 
 
 class MirivueWindow(Adw.ApplicationWindow):
-    def __init__(self, application, state=None):
+    def __init__(self, application, state=None, restore_session=True):
         super().__init__(application=application, title='Mirivue')
         self.state = state or State()
         i18n.language = self.state.settings['language']
@@ -187,6 +190,9 @@ class MirivueWindow(Adw.ApplicationWindow):
         self.active = left
         for pane in self.panes:
             self.path_group.append(pane.location_bar)
+        self.templates = Templates(self)
+        for pane in self.panes:
+            pane.location_bar.menu_button.set_menu_model(pane.location_bar.path_menu(self.templates.menu))
         self.tab_groups = []
         for pane in (left, right):
             tabs = TabGroup(self, pane)
@@ -306,6 +312,9 @@ class MirivueWindow(Adw.ApplicationWindow):
         self.navigation_pane = left
         self.tick_id = GLib.timeout_add(150, self.tick)
         self.sync_indicator()
+        if restore_session and self.state.settings['startup'] == 'session':
+            from .session import restore
+            restore(self)
         if self.state.recovery_notice:
             self.notify(self.state.recovery_notice)
 
@@ -318,6 +327,12 @@ class MirivueWindow(Adw.ApplicationWindow):
             if choice == 'custom'
             else str(Path.home())
         )
+        if choice == 'session':
+            groups = self.state.settings['tab_session'].get('groups', [])
+            locations = groups[0].get('locations', []) if isinstance(groups, list) and groups and isinstance(groups[0], dict) else []
+            locations = locations if isinstance(locations, list) else []
+            raw = Gio.File.new_for_uri(locations[0]).get_path() if locations and isinstance(locations[0], str) else None
+            raw = raw or self.state.settings['last_folder'] or self.state.settings['startup_path']
         path = Path(raw or str(Path.home()))
         return path if path.is_dir() else Path.home()
 
@@ -527,6 +542,9 @@ class MirivueWindow(Adw.ApplicationWindow):
         open_folder_tab = Gio.SimpleAction.new('open-folder-tab', GLib.VariantType.new('s'))
         open_folder_tab.connect('activate', lambda _a, value: self.new_tab(value.get_string()))
         self.add_action(open_folder_tab)
+        template = Gio.SimpleAction.new('new-from-template', GLib.VariantType.new('s'))
+        template.connect('activate', lambda _a, value: self.new_from_template(Gio.File.new_for_uri(value.get_string())))
+        self.add_action(template)
         find_duplicates_folder = Gio.SimpleAction.new('find-duplicates-folder', GLib.VariantType.new('s'))
         find_duplicates_folder.connect(
             'activate', lambda _a, value: self.find_duplicates(folder=Path(value.get_string()))
@@ -912,7 +930,7 @@ class MirivueWindow(Adw.ApplicationWindow):
         return pane.tabs.view.get_page(pane) if pane else None
 
     def new_window(self, folder):
-        window = MirivueWindow(self.get_application(), state=self.state)
+        window = MirivueWindow(self.get_application(), state=self.state, restore_session=False)
         file = folder if isinstance(folder, Gio.File) else (Gio.File.new_for_uri(str(folder))
                 if '://' in str(folder) else Gio.File.new_for_path(str(folder)))
         window.navigate_file(window.active, file)
@@ -1029,6 +1047,7 @@ class MirivueWindow(Adw.ApplicationWindow):
             row.path = path
             row.bookmark_uri = bookmark_uri
             row.volume = volume
+            row.file = (Gio.File.new_for_path(str(path)) if isinstance(path, Path) else Gio.File.new_for_uri(path)) if path is not None else None
             box = Gtk.Box(spacing=8)
             box.set_margin_top(4)
             box.set_margin_bottom(4)
@@ -1053,17 +1072,26 @@ class MirivueWindow(Adw.ApplicationWindow):
                 target.connect(
                     'drop',
                     lambda _t, files, x, y, d=path: (
-                        self.choose_transfer(
-                            [Path(f.get_path()) for f in files.get_files() if f.get_path()], d
-                        ),
+                        self.sidebar_drop(files, d, _t),
                         True,
                     )[1],
                 )
                 row.add_controller(target)
-            if bookmark_uri:
+            if path != trash_service.URI:
                 gesture = Gtk.GestureClick(button=3)
                 gesture.connect('pressed', lambda _g, _n, x, y, r=row: self.bookmark_menu(r, x, y))
                 row.add_controller(gesture)
+            if bookmark_uri:
+                drag = Gtk.DragSource(actions=Gdk.DragAction.MOVE)
+                drag.connect('prepare', lambda *_args, uri=bookmark_uri: Gdk.ContentProvider.new_for_value(uri))
+                row.add_controller(drag)
+                reorder = Gtk.DropTarget.new(str, Gdk.DragAction.MOVE)
+                reorder.connect('drop', lambda _target, value, _x, y, uri=bookmark_uri, widget=row:
+                                reorder_bookmark(value, uri, y > widget.get_height() / 2))
+                reorder.connect('enter', lambda *_args, widget=row:
+                                (widget.set_state_flags(Gtk.StateFlags.DROP_ACTIVE, False), Gdk.DragAction.MOVE)[1])
+                reorder.connect('leave', lambda *_args, widget=row: widget.unset_state_flags(Gtk.StateFlags.DROP_ACTIVE))
+                row.add_controller(reorder)
             return row
 
         def separator():
@@ -1076,6 +1104,8 @@ class MirivueWindow(Adw.ApplicationWindow):
 
         # These fixed entries precede the GTK 4 bookmark list shared with Files.
         add_row(fixed_section, tr('Dossier personnel'), Path.home(), 'user-home-symbolic')
+        if self.get_settings().get_property('gtk-recent-files-enabled') and 'recent' in Gio.Vfs.get_default().get_supported_uri_schemes():
+            add_row(fixed_section, tr('Récents'), 'recent:///', 'document-open-recent-symbolic')
         add_row(fixed_section, tr('Favoris'), 'starred:///', 'starred-symbolic')
         add_row(fixed_section, tr('Réseau'), 'network:///', 'network-workgroup-symbolic')
         add_row(fixed_section, tr('Corbeille'), trash_service.URI, 'user-trash-symbolic')
@@ -1135,19 +1165,57 @@ class MirivueWindow(Adw.ApplicationWindow):
         self.refresh_trash_icon()
         self.setup_trash_monitor()
 
+    def sidebar_drop(self, files, destination, target):
+        sources = list(files.get_files())
+        file = destination if isinstance(destination, Gio.File) else Gio.File.new_for_path(str(destination))
+        action = self.active.negotiated_drop_action(target, sources, file)
+        if action == Gdk.DragAction.LINK:
+            self.create_file_links(sources, file)
+        elif file.get_path() and all(source.get_path() for source in sources):
+            self.prepare_paste([Path(source.get_path()) for source in sources], Path(file.get_path()),
+                               action == Gdk.DragAction.MOVE)
+        else:
+            self.gio_transfer(sources, file, action == Gdk.DragAction.MOVE)
+
     def bookmark_menu(self, row, x, y):
-        if not row.bookmark_uri:
-            return
         self.place_to_edit = row.bookmark_uri
         menu = Gio.Menu()
-        menu.append(tr('Renommer…'), 'win.rename-place')
-        menu.append(tr('Retirer des signets'), 'win.remove-place')
+        actions = Gio.SimpleActionGroup()
+        file = row.file
+        entries = [
+            ('tab', 'Ouvrir dans un nouvel onglet', lambda: self.new_tab(file)),
+            ('window', 'Ouvrir dans une nouvelle fenêtre', lambda: self.new_window(file)),
+            ('properties', 'Propriétés', lambda: self.show_place_properties(file)),
+        ] if file is not None else []
+        mount = getattr(row, 'mount', None)
+        if mount is not None:
+            if mount.can_eject():
+                entries.append(('eject', 'Éjecter', lambda: self.unmount_volume(mount, True)))
+            elif mount.can_unmount():
+                entries.append(('unmount', 'Démonter', lambda: self.unmount_volume(mount, False)))
+        if row.volume is not None:
+            entries.append(('mount', 'Monter', lambda: self.mount_volume(row.volume)))
+        if row.bookmark_uri:
+            entries.extend([('rename', 'Renommer…', self.rename_place),
+                            ('remove', 'Retirer des signets', self.remove_place)])
+        for name, title, callback in entries:
+            action = Gio.SimpleAction.new(name, None)
+            action.connect('activate', lambda _a, _v, cb=callback: cb())
+            actions.add_action(action)
+            menu.append(tr(title), 'place.' + name)
+        row.insert_action_group('place', actions)
         pop = Gtk.PopoverMenu.new_from_model(menu)
         pop.set_parent(row)
         rect = Gdk.Rectangle(x=int(x), y=int(y), width=1, height=1)
         pop.set_pointing_to(rect)
         pop.connect('closed', lambda p: GLib.idle_add(lambda: (p.unparent(), False)[1]))
         pop.popup()
+
+    def show_place_properties(self, file):
+        if file.get_path():
+            self.show_folder_properties(Path(file.get_path()))
+        else:
+            dialogs.gio_properties(self, [file])
 
     def rename_place(self):
         uri = getattr(self, 'place_to_edit', '')
@@ -1175,7 +1243,7 @@ class MirivueWindow(Adw.ApplicationWindow):
         return False
 
     def mount_volume(self, volume):
-        operation = Gio.MountOperation.new()
+        operation = Gtk.MountOperation.new(self)
 
         def mounted(source, result):
             try:
@@ -1206,7 +1274,7 @@ class MirivueWindow(Adw.ApplicationWindow):
         return control
 
     def unmount_volume(self, mount, eject=False):
-        operation = Gio.MountOperation.new()
+        operation = Gtk.MountOperation.new(self)
 
         def finished(source, result):
             try:
@@ -1467,9 +1535,7 @@ class MirivueWindow(Adw.ApplicationWindow):
             section([('Propriétés', 'properties')])
         else:
             if not self.active.is_starred and self.active.remote_file is None:
-                creation = Gio.Menu()
-                creation.append(tr('Dossier…'), 'win.new-folder')
-                creation.append(tr('Fichier texte…'), 'win.new-text-file')
+                creation = self.templates.menu
                 menu.append_submenu(tr('Créer un nouveau'), creation)
             entries = []
             if self.can_paste() and not self.active.is_starred:
@@ -1941,15 +2007,37 @@ class MirivueWindow(Adw.ApplicationWindow):
         if not destination.get_path() or any(not file.get_path() for file in files):
             self.notify(tr('Les liens symboliques nécessitent des fichiers locaux.'))
             return
-        targets = [(destination.get_child(file.get_basename()), file.get_path()) for file in files]
         def work(_path, cancelled, report):
-            changed = []
-            for target, source in targets:
+            from .core.undo import LinkRecord
+            from .core.extensions import fingerprint
+            changed, records = [], []
+            warning = ''
+            for file in files:
                 if cancelled():
-                    raise InterruptedError()
-                target.make_symbolic_link(source, None)
-                changed.append(target.get_path())
-            return {'gio_changed': changed}
+                    break
+                name, count = file.get_basename(), 0
+                try:
+                    while True:
+                        label = name if count == 0 else trf('Lien vers \x1f0\x1f', name)
+                        if count > 1:
+                            label += ' (' + str(count) + ')'
+                        target = destination.get_child(label)
+                        try:
+                            target.make_symbolic_link(file.get_path(), None)
+                            break
+                        except GLib.Error as error:
+                            if not error.matches(Gio.io_error_quark(), Gio.IOErrorEnum.EXISTS):
+                                raise
+                            count += 1
+                        if cancelled():
+                            raise InterruptedError()
+                    path = Path(target.get_path())
+                    changed.append(str(path))
+                    records.append(LinkRecord(path, file.get_path(), fingerprint(path)))
+                except (GLib.Error, OSError, InterruptedError) as error:
+                    warning = str(error) or tr('Opération interrompue.')
+                    break
+            return {'gio_changed': changed, 'undo_entries': records, 'warning': warning}
         self.jobs.submit(tr('Créer des liens'), [destination.get_path()], work, False)
 
     def paths(self):
@@ -1980,7 +2068,7 @@ class MirivueWindow(Adw.ApplicationWindow):
     def can_paste(self):
         formats = self.get_clipboard().get_formats()
         return any(
-            formats.contain_mime_type(mime) for mime in (GNOME_MIME, LEGACY_MIME, encode_uris, decode_uris, 'text/uri-list')
+            formats.contain_mime_type(mime) for mime in (GNOME_MIME, LEGACY_MIME, 'text/uri-list')
         ) or formats.contain_gtype(Gdk.FileList.__gtype__)
 
     def copy(self, cut):
@@ -2000,27 +2088,75 @@ class MirivueWindow(Adw.ApplicationWindow):
             return
         self.set_file_clipboard(paths, cut)
 
-    def gio_transfer(self, files, destination, move=False):
+    def resolve_transfer_conflict(self, source, target, replace, merge, cancelled):
+        done = threading.Event()
+        answer = ['cancel']
+        opened = []
+        def present():
+            if self.closed or cancelled():
+                done.set()
+                return False
+            dialog = Adw.AlertDialog(heading=tr('Conflit de noms'),
+                                    body=source.get_parse_name() + '\n→ ' + target.get_parse_name())
+            dialog.add_response('cancel', tr('Annuler'))
+            dialog.add_response('skip', tr('Ignorer'))
+            dialog.add_response('rename', tr('Renommer'))
+            if merge:
+                dialog.add_response('merge', tr('Fusionner les dossiers'))
+            elif replace:
+                dialog.add_response('replace', tr('Remplacer'))
+                dialog.set_response_appearance('replace', Adw.ResponseAppearance.DESTRUCTIVE)
+            dialog.set_close_response('cancel')
+            def response(_dialog, value):
+                answer[0] = value
+                done.set()
+            dialog.connect('response', response)
+            opened.append(dialog)
+            dialog.present(self)
+            return False
+        GLib.idle_add(present)
+        while not done.wait(.1):
+            if cancelled() or self.closed:
+                for dialog in opened:
+                    GLib.idle_add(lambda d=dialog: (d.close(), False)[1])
+                return 'cancel'
+        return answer[0]
+
+    def gio_transfer(self, files, destination, move=False, confirmed_merge=False, clipboard_cut=False):
         if not files:
             return
-
         def work(_path, cancelled, report):
-            results = gio_backend.transfer(
-                files,
-                destination,
-                move,
-                cancelled,
-                lambda done, total: report(done / total if total else None, tr('Transfert réseau')),
-            )
-            return {
-                'gio_changed': [str(target.get_path()) for _, target, _ in results if target.get_path()],
-                'gio_remote_refresh': [destination.get_uri()]
-                + ([source.get_parent().get_uri() for source, _, _ in results] if move else []),
-                'gio_move': move and not any(warning for _, _, warning in results),
-                'warning': '\n'.join(warning for _, _, warning in results if warning),
-            }
-
-        self.jobs.submit(tr('Transfert réseau'), [self.active.folder], work, False)
+            records, changed, warnings = [], [], []
+            complete_history = True
+            for file in files:
+                if cancelled():
+                    break
+                target = destination.get_child(file.get_basename())
+                report(None, file.get_parse_name())
+                entries, updates, errors, available = directory_merge.merge(
+                    file, target, not move, cancelled,
+                    lambda source, target, replace, merge: self.resolve_transfer_conflict(
+                        source, target, replace, merge, cancelled),
+                    self.undo_manager, confirmed=confirmed_merge)
+                records.extend(entries)
+                changed.extend(updates)
+                warnings.extend(errors)
+                complete_history = complete_history and available
+                if cancelled():
+                    break
+            return {'gio_changed': [Gio.File.new_for_uri(uri).get_path() for uri in changed
+                                    if Gio.File.new_for_uri(uri).get_path()],
+                    'gio_remote_refresh': [destination.get_uri()] + [file.get_parent().get_uri() for file in files
+                                                                    if file.get_parent()],
+                    'gio_move': move and not warnings and all(not file.query_exists(None) for file in files),
+                    'undo_entries': records if complete_history else [],
+                    'warning': '\n'.join(warnings)}
+        local = [Path(file.get_path()) for file in files if file.get_path()]
+        job = self.jobs.submit(tr('Déplacement' if move else 'Copie'), local[:1] or [self.active.folder], work, False)
+        job.locked_paths = local + ([Path(destination.get_path())] if destination.get_path() else [])
+        if clipboard_cut and local:
+            self.pending_cut_jobs.append((job, local, self.clipboard_provider))
+        return job
 
     def paste_remote(self, pane):
         if pane.remote_file is not None:
@@ -2146,10 +2282,15 @@ class MirivueWindow(Adw.ApplicationWindow):
             return
 
         def chosen(policy):
-            if policy != 'cancel':
+            if policy == 'merge':
+                self.gio_transfer([Gio.File.new_for_path(str(path)) for path in paths],
+                                  Gio.File.new_for_path(str(folder)), cut, True, cut)
+            elif policy != 'cancel':
                 self.transfer(paths, folder, copy=not cut, conflict=policy, clipboard_cut=cut)
 
         choices = [(tr('Renommer les nouveaux éléments'), 'rename'), (tr('Ignorer les conflits'), 'skip')]
+        if any(path.is_dir() and (folder / path.name).is_dir() for path in conflicts):
+            choices.append((tr('Fusionner les dossiers…'), 'merge'))
         if all(not path.is_dir() and not (folder / path.name).is_dir() for path in conflicts):
             choices.append((tr('Remplacer les fichiers existants'), 'replace'))
         dialogs.choice(
@@ -2247,7 +2388,7 @@ class MirivueWindow(Adw.ApplicationWindow):
                 if isinstance(child, RenameRecord):
                     for source, target in child.pairs:
                         self.state.relocate(source if redo else target, target if redo else source)
-                elif isinstance(child, (FolderRecord, TrashRecord)):
+                elif not hasattr(child, 'target'):
                     pass
                 elif not child.copy:
                     self.state.relocate(child.source if redo else child.target,
@@ -2284,7 +2425,7 @@ class MirivueWindow(Adw.ApplicationWindow):
         for job in self.jobs.jobs:
             if job.state not in ('queued', 'running'):
                 continue
-            for current in map(lambda p: Path(p).absolute(), job.paths):
+            for current in map(lambda p: Path(p).absolute(), getattr(job, 'locked_paths', job.paths)):
                 for requested_path in requested:
                     if (
                         current == requested_path
@@ -2497,6 +2638,21 @@ class MirivueWindow(Adw.ApplicationWindow):
                 self.notify(str(e))
 
         dialogs.text_input(self, tr('Nouveau dossier'), file_moves.untitled_folder_name(folder), done)
+
+    def new_from_template(self, file):
+        if self.active.remote_file is not None or self.active.is_trash or self.active.is_starred:
+            return
+        destination = self.active.folder
+        target = destination / file_moves.available_name(destination, file.get_basename())
+        def work(_path, cancelled, report):
+            if cancelled():
+                raise InterruptedError()
+            # Native GIO copy refuses an occupied name; template stays intact.
+            gio_backend.transfer([file], Gio.File.new_for_path(str(destination)), cancelled=cancelled,
+                                 names={file.get_uri(): target.name})
+            record = self.undo_manager.prepare_record(file.get_path(), target, True, companions=False)
+            return {'target': str(target), 'undo_entry': record}
+        self.jobs.submit(tr('Créer un document'), [destination], work, False)
 
     def new_text_file(self):
         if self.active.is_trash or self.active.is_starred or self.active.remote_file is not None:
@@ -2838,6 +2994,10 @@ class MirivueWindow(Adw.ApplicationWindow):
             elif isinstance(result, dict):
                 if result.get('warning'):
                     self.notify(result['warning'])
+                for entry in result.get('undo_entries', []):
+                    self.undo_manager.record_prepared(entry, group=id(job))
+                    if hasattr(entry, 'target'):
+                        self.state.relocate(entry.source, entry.target, entry.copy)
                 if result.get('undo_entry'):
                     self.undo_manager.record_prepared(result['undo_entry'], group=id(job))
                 elif result.get('undo_record'):
@@ -3010,7 +3170,11 @@ class MirivueWindow(Adw.ApplicationWindow):
     def shutdown(self):
         if self.closed:
             return
+        if self.state.settings['startup'] == 'session':
+            from .session import snapshot
+            self.state.settings['tab_session'] = snapshot(self)
         self.closed = True
+        self.templates.close()
         self.jobs.close()
         self.preview.close()
         GLib.source_remove(self.tick_id)

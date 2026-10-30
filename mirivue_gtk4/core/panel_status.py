@@ -15,6 +15,10 @@ def summarize(rows, selected=()):
         for row in visible
         if not row.is_dir and isinstance(row.sort_values[1], (int, float)) and row.sort_values[1] > 0
     )
+    return format_counts(folders, files, total, sum(bool(row.error) for row in rows), bool(selected))
+
+
+def format_counts(folders, files, total, errors, selected=False):
     label = ', '.join(
         (
             f'{folders} {tr("dossier" if folders == 1 else "dossiers")}',
@@ -25,7 +29,6 @@ def summarize(rows, selected=()):
         label += f' ({size_text(quantity(total, ["o", "Kio", "Mio", "Gio", "Tio"], 1024))})'
     if selected:
         label = tr('Sélection : ') + label
-    errors = sum(bool(row.error) for row in rows)
     if errors:
         label += f' • {errors} {tr("erreur" if errors == 1 else "erreurs")}'
     return label

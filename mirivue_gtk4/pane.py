@@ -11,6 +11,7 @@ from .i18n import tr
 from .backend import column_initial_width
 from .core import metadata, gio_backend, folder_search, renaming, trash as trash_service
 from .core.panel_status import summarize
+from .model_summary import ModelSummary
 from .navigation import LocationBar
 
 
@@ -78,6 +79,8 @@ class Pane(Gtk.Box):
         self.remote_entries = []
         self.remote_model = None
         self.remote_can_write = False
+        self.folder_style_ready = False
+        self.restoring_folder_style = False
         self.local_view = window.state.settings['pane_views'][width_slot]
         self.is_trash = False
         self.is_starred = False
@@ -162,6 +165,7 @@ class Pane(Gtk.Box):
         self.store = Gio.ListStore.new(Item)
         self.filter = Gtk.CustomFilter.new(self.matches)
         self.filtered = Gtk.FilterListModel.new(self.store, self.filter)
+        self.status_index = ModelSummary(self.filtered)
         self.sorted = Gtk.SortListModel.new(self.filtered, None)
         self.selection = Gtk.MultiSelection.new(self.sorted)
         self.selection.connect('selection-changed', self.selection_changed)
@@ -225,6 +229,7 @@ class Pane(Gtk.Box):
         self.combined_sorter.append(self.view.get_sorter())
         self.sorted.set_sorter(self.combined_sorter)
         self.view.sort_by_column(self.columns[0], Gtk.SortType.ASCENDING)
+        self.view.get_sorter().connect('changed', lambda *_: self.remember_folder_style())
         self.view.connect('activate', self.activate)
         preview_keys = Gtk.EventControllerKey()
         preview_keys.connect('key-pressed', self.quick_preview_key)
@@ -591,7 +596,7 @@ class Pane(Gtk.Box):
             if self.criteria.get(key) and self.criteria[key].casefold() not in str(row.media_tags.get(key, '')).casefold():
                 return False
         needle = self.search.get_text().casefold().strip()
-        return not needle or needle in item.path.name.casefold()
+        return not needle or needle in getattr(item, 'name', item.path.name).casefold()
 
     def make_no_results(self):
         label = Gtk.Label(
@@ -720,7 +725,7 @@ class Pane(Gtk.Box):
         self.search_finished = False
 
     def search_changed(self):
-        if not self.search_box.get_visible():
+        if self.closed or not self.search_box.get_visible():
             return
         self.update_search_labels()
         if self.search_gio_cancel is not None:
@@ -730,6 +735,7 @@ class Pane(Gtk.Box):
         if self.search_timer:
             GLib.source_remove(self.search_timer)
         self.search_finished = False
+        self.filter.changed(Gtk.FilterChange.DIFFERENT)
         self.update_search_empty()
         if self.search_subfolders.get_active() and (self.search.get_text().strip() or self.criteria or self.type_filter != 'all'):
             self.search_timer = GLib.timeout_add(200, self.start_recursive_search, self.search_serial)
@@ -748,7 +754,7 @@ class Pane(Gtk.Box):
 
     def start_recursive_search(self, serial):
         self.search_timer = 0
-        if serial != self.search_serial or not self.search_box.get_visible():
+        if self.closed or serial != self.search_serial or not self.search_box.get_visible():
             return GLib.SOURCE_REMOVE
         self.cancel.set()
         self.cancel = threading.Event()
@@ -928,7 +934,7 @@ class Pane(Gtk.Box):
             if index == 14:
                 from .i18n import date_text
 
-                value = date_text(item.row.modified_ns)
+                value = date_text(item.row.modified_ns, self.window.state.settings['date_format'])
             if index == 0:
                 names = child.get_last_child()
                 display = names.get_child_by_name('display')
@@ -1057,7 +1063,15 @@ class Pane(Gtk.Box):
         editor.name_stack = names
         editor.display_label = display
         editor.connect('notify::editing', self.inline_edit_finished)
-        names.add_named(display, 'display')
+        display_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        display_box.name_label = display
+        display_box.caption_label = Gtk.Label(xalign=0.5, justify=Gtk.Justification.CENTER,
+                                             ellipsize=Pango.EllipsizeMode.END, css_classes=['dim-label'])
+        display_box.caption_label.set_lines(3)
+        display_box.caption_label.set_width_chars(1)
+        display_box.append(display)
+        display_box.append(display_box.caption_label)
+        names.add_named(display_box, 'display')
         names.add_named(editor, 'edit')
         box.append(names)
         self.add_file_drag_source(box, self.grid)
@@ -1092,11 +1106,29 @@ class Pane(Gtk.Box):
             text = str(item.row.values[0]) if self.is_trash or self.remote_file is not None else item.path.name
             if not label.get_editing():
                 label.set_text(text)
-                display.set_label(
+                display.name_label.set_label(
                     f'{text}\n{item.search_parent}'
                     if item.search_parent and item.search_parent != '.'
                     else text
                 )
+                captions = []
+                for column in self.window.state.settings['icon_captions']:
+                    if column == -1:
+                        continue
+                    if column == 14:
+                        from .i18n import date_text
+                        value = date_text(item.row.modified_ns, self.window.state.settings['date_format'])
+                    else:
+                        value = self.value(item, column)
+                    if column == 1:
+                        from .i18n import size_text
+                        value = size_text(value)
+                    if value:
+                        captions.append(str(value))
+                display.caption_label.set_label('\n'.join(captions))
+                display.caption_label.set_visible(bool(captions))
+                display.name_label.record = item
+                display.caption_label.record = item
                 display.set_tooltip_text(str(item.path) if self.search_recursive_active else text)
                 label.set_visible(False)
                 names.set_visible_child_name('display')
@@ -1170,6 +1202,8 @@ class Pane(Gtk.Box):
         return False
 
     def start_inline_rename(self, item):
+        if self.closed:
+            return None
         # Keep the entry point used by F2, with Nautilus's popover behavior.
         from .rename_popover import show_rename
         return show_rename(self, item)
@@ -1196,6 +1230,38 @@ class Pane(Gtk.Box):
         self.grid.set_min_columns(columns)
         self.grid.set_max_columns(columns)
 
+    def remember_folder_style(self):
+        settings = self.window.state.settings
+        if not settings['remember_folder_view'] or not self.folder_style_ready or self.restoring_folder_style:
+            return
+        from .session import location
+        sorter = self.view.get_sorter()
+        column = sorter.get_primary_sort_column()
+        style = dict(view=self.local_view, column=self.columns.index(column) if column in self.columns else 0,
+                     descending=sorter.get_primary_sort_order() == Gtk.SortType.DESCENDING)
+        uri = location(self)
+        if uri and settings['folder_views'].get(uri) != style:
+            settings['folder_views'][uri] = style
+            self.window.state.save()
+
+    def restore_folder_style(self):
+        self.restoring_folder_style = True
+        try:
+            settings = self.window.state.settings
+            from .session import location
+            style = settings['folder_views'].get(location(self), {}) if settings['remember_folder_view'] else {}
+            if isinstance(style, dict):
+                mode = style.get('view')
+                if mode in ('details', 'icons'):
+                    self.stack.set_visible_child_name(mode)
+                column = style.get('column')
+                if type(column) is int and 0 <= column < len(self.columns):
+                    self.view.sort_by_column(self.columns[column], Gtk.SortType.DESCENDING
+                                             if style.get('descending') is True else Gtk.SortType.ASCENDING)
+        finally:
+            self.restoring_folder_style = False
+            self.folder_style_ready = True
+
     def grid_view_changed(self, *_args):
         mode = self.stack.get_visible_child_name()
         if mode in ('icons', 'details'):
@@ -1204,6 +1270,7 @@ class Pane(Gtk.Box):
             if views[self.width_slot] != mode:
                 views[self.width_slot] = mode
                 self.window.state.save()
+        self.remember_folder_style()
         if mode == 'icons':
             GLib.idle_add(self.update_grid_columns)
 
@@ -1238,16 +1305,15 @@ class Pane(Gtk.Box):
 
     def update_panel_status(self):
         """Keep each pane's count, error total, and free space with its own view."""
+        index = getattr(self, 'status_index', None)
+        if index is not None:
+            self.panel_count.set_label(index.text(self.selected()))
+        else:
+            rows = [self.filtered.get_item(i).row for i in range(self.filtered.get_n_items())]
+            self.panel_count.set_label(summarize(rows, [item.row for item in self.selected()]))
         if self.remote_file is not None:
-            directories = sum(self.filtered.get_item(i).row.is_dir for i in range(self.filtered.get_n_items()))
-            self.panel_count.set_label(
-                f'{directories} {tr("dossier" if directories == 1 else "dossiers")}, '
-                f'{self.filtered.get_n_items() - directories} {tr("fichier" if self.filtered.get_n_items() - directories == 1 else "fichiers")}'
-            )
             self.panel_free.set_label(self.remote_file.get_uri())
             return
-        rows = [self.filtered.get_item(index).row for index in range(self.filtered.get_n_items())]
-        self.panel_count.set_label(summarize(rows, [item.row for item in self.selected()]))
         self.update_search_empty()
         folder = str(self.folder)
         if folder != self.status_folder:
@@ -1609,12 +1675,14 @@ class Pane(Gtk.Box):
         self.is_trash = False
         self.is_starred = False
         self.remote_file = None
+        self.folder_style_ready = False
         self.folder = folder
         self.location.set_text(str(folder))
         self.location_bar.update(folder)
         self.items.clear()
         self.store.remove_all()
         self.stack.set_visible_child_name(self.local_view)
+        self.restore_folder_style()
         self.update_panel_status()
         self.set_tab_title(folder.name or '/')
         self.restore_selection = set()
@@ -1642,6 +1710,8 @@ class Pane(Gtk.Box):
     def stop_loading(self):
         self.cancel.set()
         self.search_cancel.set()
+        if self.search_gio_cancel is not None:
+            self.search_gio_cancel.cancel()
         self.stop_remote_listing()
         self.set_loading(False)
 
@@ -1666,18 +1736,21 @@ class Pane(Gtk.Box):
             self.monitor.cancel()
             self.monitor = None
         self.is_trash = self.is_starred = False
+        self.folder_style_ready = False
         self.remote_file = file
         self.remote_entries = []
         self.items.clear()
         self.store.remove_all()
         network_root = file.get_uri().rstrip('/') == 'network:'
-        label = tr('Réseau') if network_root else file.get_basename() or file.get_parse_name()
+        label = tr('Réseau') if network_root else tr('Récents') if file.get_uri().startswith('recent:') else file.get_basename() or file.get_parse_name()
         self.remote_connect.set_visible(network_root)
         self.location_bar.update_virtual(label, file.get_uri())
         self.set_tab_title(label)
-        self.search_subfolders.set_sensitive(not network_root)
+        self.search_subfolders.set_sensitive(not network_root and not file.get_uri().startswith('recent:'))
         self.duplicates_button.set_visible(False)
         self.stack.set_visible_child_name('remote' if network_root else self.local_view)
+        if not network_root:
+            self.restore_folder_style()
         self.remote_empty_title.set_label(tr('Chargement…'))
         self.remote_empty_detail.set_label('')
         self.remote_content.set_visible_child_name('empty')
@@ -2311,6 +2384,7 @@ class Pane(Gtk.Box):
         if popover is not None:
             popover.popdown()
         self.closed = True
+        self.status_index.close()
         self.cancel.set()
         self.search_cancel.set()
         if self.search_timer:
