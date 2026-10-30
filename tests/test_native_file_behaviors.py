@@ -256,6 +256,22 @@ class NativeFileBehaviorsTests(unittest.TestCase):
             self.assertTrue(places.reorder_bookmark('smb://server/share', 'file:///two', True))
             self.assertEqual(places.read_bookmarks(), [('file:///one', 'One'), ('file:///two', 'Two'), ('smb://server/share', 'Shared')])
 
+    def test_trash_tracking_waits_for_known_restored_entry_and_rejects_ambiguity(self):
+        from mirivue_gtk4.core import trash
+        path = self.folder / 'tracked.txt'
+        old = SimpleNamespace(original_path=str(path), trash_uri='trash:///old')
+        new = SimpleNamespace(original_path=str(path), trash_uri='trash:///new')
+        calls = []
+        file = SimpleNamespace(trash=lambda _cancel: calls.append('trash'))
+        with patch.object(trash.Gio.File, 'new_for_path', return_value=file), \
+             patch.object(trash.time, 'sleep'), \
+             patch.object(trash, 'rows', side_effect=[[old], [], [], [new]]):
+            self.assertEqual(trash.trash_tracked(path, previous_uri=old.trash_uri), new.trash_uri)
+        self.assertEqual(calls, ['trash'])
+        with patch.object(trash.Gio.File, 'new_for_path', return_value=file), \
+             patch.object(trash, 'rows', side_effect=[[], [old, new]]):
+            self.assertIsNone(trash.trash_tracked(path))
+
     def test_trash_undo_redo_uses_exact_gvfs_entry_when_available(self):
         from mirivue_gtk4.core import trash
         from mirivue_gtk4.core.undo import TrashRecord
@@ -265,7 +281,13 @@ class NativeFileBehaviorsTests(unittest.TestCase):
             self.skipTest('GVfs Trash is not available in this isolated environment')
         path = self.folder / 'trash-roundtrip.txt'
         path.write_text('keep')
-        uri = trash.trash_tracked(path)
+        try:
+            uri = trash.trash_tracked(path)
+        except GLib.Error as error:
+            if error.matches(Gio.io_error_quark(), Gio.IOErrorEnum.NOT_SUPPORTED):
+                self.assertEqual(path.read_text(), 'keep')
+                self.skipTest('Native GIO refuses trash on this container filesystem; source preserved')
+            raise
         self.assertIsNotNone(uri)
         manager = UndoManager()
         manager.record_prepared(TrashRecord(path, uri, trash.entry_signature(uri)))

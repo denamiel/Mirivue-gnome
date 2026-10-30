@@ -5,7 +5,14 @@ export LANGUAGE=fr LC_ALL=C.UTF-8
 export GSK_RENDERER=cairo
 export PYTHONFAULTHANDLER=1
 test_root="$(mktemp -d)"
-trap 'rm -rf -- "$test_root"' EXIT
+cleanup() {
+    # Session services can finish writing after the private bus exits.
+    for attempt in 1 2 3; do
+        if rm -rf -- "$test_root"; then return; fi
+        sleep .1
+    done
+}
+trap cleanup EXIT
 export XDG_CONFIG_HOME="$test_root/config" XDG_STATE_HOME="$test_root/state" XDG_CACHE_HOME="$test_root/cache" XDG_DATA_HOME="$test_root/data"
 mkdir -p "$XDG_CONFIG_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME" "$XDG_DATA_HOME"
 # GVfs daemons must inherit the same isolated XDG directories as the tests.

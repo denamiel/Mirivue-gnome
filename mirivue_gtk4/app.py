@@ -40,7 +40,7 @@ from .core import (
     directory_merge,
     trash as trash_service,
 )
-from .core.undo import UndoManager, RenameRecord, FolderRecord, TrashRecord, BatchRecord, record_paths, individual_records
+from .core.undo import UndoManager, RenameRecord, FolderRecord, TrashRecord, record_paths, individual_records
 from .core.file_safety import check_removal
 from .clipboard_transfer import (
     encode_uris, decode_uris,
