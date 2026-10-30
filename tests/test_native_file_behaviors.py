@@ -17,6 +17,17 @@ class NativeFileBehaviorsTests(unittest.TestCase):
     setUp = support.NativeParityTests.setUp
     tearDown = support.NativeParityTests.tearDown
 
+    def test_failed_cut_preserves_dangling_link_on_clipboard(self):
+        source = self.folder / 'dangling'
+        source.symlink_to(self.folder / 'missing')
+        self.window.set_file_clipboard([source], True)
+        job = SimpleNamespace(state='failed')
+        self.window.pending_cut_jobs.append((job, [source], self.window.clipboard_provider))
+        self.window.tick()
+        self.assertEqual(self.window.clipboard_paths, [source])
+        self.assertTrue(self.window.clipboard_cut)
+        self.assertTrue(source.is_symlink())
+
     def test_native_links_use_available_names_and_grouped_undo(self):
         source = self.folder / 'original.txt'
         source.write_text('keep original')

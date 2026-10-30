@@ -2953,7 +2953,7 @@ class MirivueWindow(Adw.ApplicationWindow):
             self.pending_cut_jobs.remove((job, paths, provider))
             clipboard = self.get_clipboard()
             if provider is not None and clipboard.get_content() == provider:
-                remaining = [path for path in self.clipboard_paths if path.exists()]
+                remaining = [path for path in self.clipboard_paths if file_moves.exists(path)]
                 self.set_file_clipboard(remaining, True)
         width = self.get_width()
         compact = width < 1700
