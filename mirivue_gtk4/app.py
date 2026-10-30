@@ -37,7 +37,8 @@ from .core import (
     gio_backend,
     trash as trash_service,
 )
-from .core.undo import UndoManager, RenameRecord, FolderRecord
+from .core.undo import UndoManager, RenameRecord, FolderRecord, TrashRecord, record_paths, individual_records
+from .core.file_safety import check_removal
 from .clipboard_transfer import (
     encode_uris, decode_uris,
     GNOME_MIME,
@@ -464,6 +465,10 @@ class MirivueWindow(Adw.ApplicationWindow):
             'advanced-search': lambda: dialogs.search(self),
             'organize': lambda: dialogs.organize(self),
             'new-tab': self.new_tab,
+            'new-window': lambda: self.new_window(self.active.remote_file or self.active.folder),
+            'open-folder-tabs': lambda: self.open_selected_folders(False),
+            'open-folder-windows': lambda: self.open_selected_folders(True),
+            'invert-selection': self.invert_selection,
             'restore-tab': lambda: self.active.tabs.restore(),
             'close-tab': self.close_tab,
             'thumbnails': self.toggle_thumbnails,
@@ -539,6 +544,14 @@ class MirivueWindow(Adw.ApplicationWindow):
         for name, keys in {
             'show-menu': ['F10'],
             'new-tab': ['<Control>t'],
+            'new-window': ['<Control>n'],
+            'open-folder-tabs': ['<Control>Return'],
+            'open-folder-windows': ['<Shift>Return'],
+            'invert-selection': ['<Control><Shift>i'],
+            'details': ['<Control>1'],
+            'icons': ['<Control>2'],
+            'open': ['<Control>o'],
+            'delete': ['<Shift>Delete'],
             'close-tab': ['<Control>w'],
             'restore-tab': ['<Control><Shift>t'],
             'refresh': ['F5', '<Control>r'],
@@ -552,7 +565,7 @@ class MirivueWindow(Adw.ApplicationWindow):
             'redo-file': ['<Control><Shift>z'],
             'select-all': ['<Control>a'],
             'new-folder': ['<Control><Shift>n'],
-            'terminal': ['<Alt><Shift>F4'],
+            'terminal': ['<Control>period'],
             'rename': ['F2'],
             'trash': ['Delete'],
             'hidden': ['<Control>h'],
@@ -562,7 +575,7 @@ class MirivueWindow(Adw.ApplicationWindow):
             'up': ['<Alt>Up'],
             'home': ['<Alt>Home'],
             'bookmark-current': ['<Control>d'],
-            'properties': ['<Alt>Return'],
+            'properties': ['<Alt>Return', '<Control>i'],
             'help': ['F1'],
             'preferences': ['<Control>comma'],
             'shortcuts': ['<Control>question'],
@@ -601,6 +614,10 @@ class MirivueWindow(Adw.ApplicationWindow):
             'toolbar',
             'show-menu',
             'new-tab',
+            'new-window',
+            'open-folder-tabs',
+            'open-folder-windows',
+            'invert-selection',
             'close-tab',
             'restore-tab',
             'icons',
@@ -896,7 +913,9 @@ class MirivueWindow(Adw.ApplicationWindow):
 
     def new_window(self, folder):
         window = MirivueWindow(self.get_application(), state=self.state)
-        window.active.open(folder)
+        file = folder if isinstance(folder, Gio.File) else (Gio.File.new_for_uri(str(folder))
+                if '://' in str(folder) else Gio.File.new_for_path(str(folder)))
+        window.navigate_file(window.active, file)
         window.present()
 
     def show_folder_properties(self, folder):
@@ -1902,6 +1921,37 @@ class MirivueWindow(Adw.ApplicationWindow):
         box.append(button)
         dialog.present()
 
+    def invert_selection(self):
+        selection = self.active.selection
+        for index in range(selection.get_n_items()):
+            if selection.is_selected(index):
+                selection.unselect_item(index)
+            else:
+                selection.select_item(index, False)
+
+    def open_selected_folders(self, windows=False):
+        for item in self.active.selected():
+            if item.row.is_dir:
+                if windows:
+                    self.new_window(item.file)
+                else:
+                    self.new_tab(item.file)
+
+    def create_file_links(self, files, destination):
+        if not destination.get_path() or any(not file.get_path() for file in files):
+            self.notify(tr('Les liens symboliques nécessitent des fichiers locaux.'))
+            return
+        targets = [(destination.get_child(file.get_basename()), file.get_path()) for file in files]
+        def work(_path, cancelled, report):
+            changed = []
+            for target, source in targets:
+                if cancelled():
+                    raise InterruptedError()
+                target.make_symbolic_link(source, None)
+                changed.append(target.get_path())
+            return {'gio_changed': changed}
+        self.jobs.submit(tr('Créer des liens'), [destination.get_path()], work, False)
+
     def paths(self):
         return [] if self.active.is_trash else [i.path for i in self.active.selected()]
 
@@ -2143,13 +2193,14 @@ class MirivueWindow(Adw.ApplicationWindow):
                 bytes_progress=lambda done, total: report(done / total if total else None, path.name),
             )
             self.state.relocate(path, target, copy or bool(warning))
-            return {
-                'source': str(path),
-                'target': str(target),
-                'copy': copy,
-                'warning': warning,
-                'undo_record': not bool(warning),
-            }
+            record = None
+            if not warning:
+                try:
+                    record = self.undo_manager.prepare_record(path, target, copy)
+                except (OSError, ValueError):
+                    pass
+            return {'source': str(path), 'target': str(target), 'copy': copy,
+                    'warning': warning, 'undo_entry': record}
 
         job = self.jobs.submit(tr('Copie' if copy else 'Déplacement'), paths, work, False)
         if clipboard_cut:
@@ -2183,13 +2234,7 @@ class MirivueWindow(Adw.ApplicationWindow):
             )
             return
         item = stack[-1]
-        affected = (
-            [path for pair in item.pairs for path in pair]
-            if isinstance(item, RenameRecord)
-            else [item.path]
-            if isinstance(item, FolderRecord)
-            else [item.source, item.target]
-        )
+        affected = record_paths(item)
         if self.paths_busy(affected):
             self.notify(tr('Une opération utilise encore ce fichier.'))
             return
@@ -2198,22 +2243,20 @@ class MirivueWindow(Adw.ApplicationWindow):
             if cancelled():
                 raise InterruptedError()
             operation = self.undo_manager.redo() if redo else self.undo_manager.undo()
-            if isinstance(operation, RenameRecord):
-                for source, target in operation.pairs:
-                    self.state.relocate(source if redo else target, target if redo else source)
-                return {'reversed_paths': [str(path) for pair in operation.pairs for path in pair]}
-            if isinstance(operation, FolderRecord):
-                return {'reversed_paths': [str(operation.path)]}
-            if not operation.copy:
-                self.state.relocate(
-                    operation.source if redo else operation.target,
-                    operation.target if redo else operation.source,
-                )
-            elif redo:
-                self.state.relocate(operation.source, operation.target, True)
-            return {'reversed_paths': [str(operation.source), str(operation.target)]}
+            for child in individual_records(operation):
+                if isinstance(child, RenameRecord):
+                    for source, target in child.pairs:
+                        self.state.relocate(source if redo else target, target if redo else source)
+                elif isinstance(child, (FolderRecord, TrashRecord)):
+                    pass
+                elif not child.copy:
+                    self.state.relocate(child.source if redo else child.target,
+                                        child.target if redo else child.source)
+                elif redo:
+                    self.state.relocate(child.source, child.target, True)
+            return {'reversed_paths': [str(path) for path in record_paths(operation)], 'trash_refresh': True}
 
-        self.jobs.submit(tr('Rétablir' if redo else 'Annuler'), affected, work, False)
+        self.jobs.submit(tr('Rétablir' if redo else 'Annuler'), affected[:1], work, False)
 
     def duplicate(self):
         paths = self.paths()
@@ -2508,19 +2551,28 @@ class MirivueWindow(Adw.ApplicationWindow):
         paths = self.paths()
         if not paths:
             return
+        try:
+            signatures = {path: check_removal(path) for path in paths}
+        except (OSError, ValueError) as error:
+            self.notify(str(error))
+            return
+        if self.paths_busy(paths):
+            self.notify(tr('Un élément sélectionné est utilisé par une opération en cours.'))
+            return
 
         def confirmed():
             def work(path, cancelled, report):
                 if cancelled():
                     raise InterruptedError()
+                check_removal(path, signatures[path], recursive=True)
+                record = None
                 if permanent:
-                    if path.is_dir() and not path.is_symlink():
-                        shutil.rmtree(path)
-                    else:
-                        path.unlink()
+                    gio_backend.remove(Gio.File.new_for_path(str(path)), True, cancelled)
                 else:
-                    Gio.File.new_for_path(str(path)).trash(None)
-                return {'source': str(path)}
+                    uri = trash_service.trash_tracked(path)
+                    if uri is not None:
+                        record = TrashRecord(path, uri, trash_service.entry_signature(uri))
+                return {'source': str(path), 'trash_refresh': not permanent, 'undo_entry': record}
 
             self.jobs.submit(tr('Suppression'), paths, work, False)
 
@@ -2528,11 +2580,8 @@ class MirivueWindow(Adw.ApplicationWindow):
             self,
             tr('Supprimer définitivement ?' if permanent else 'Mettre à la corbeille ?'),
             f'{len(paths)} {tr("élément(s)")}\n'
-            + tr(
-                'Cette action est irréversible.'
-                if permanent
-                else 'Ils pourront être restaurés depuis la corbeille du système.'
-            ),
+            + tr('Cette action est irréversible.' if permanent else
+                 'Ils pourront être restaurés depuis la corbeille du système.'),
             confirmed,
         )
 
@@ -2789,9 +2838,11 @@ class MirivueWindow(Adw.ApplicationWindow):
             elif isinstance(result, dict):
                 if result.get('warning'):
                     self.notify(result['warning'])
-                if result.get('undo_record'):
+                if result.get('undo_entry'):
+                    self.undo_manager.record_prepared(result['undo_entry'], group=id(job))
+                elif result.get('undo_record'):
                     try:
-                        self.undo_manager.record(result['source'], result['target'], result['copy'])
+                        self.undo_manager.record(result['source'], result['target'], result['copy'], group=id(job))
                     except (OSError, ValueError):
                         pass
                 if result.get('renamed'):

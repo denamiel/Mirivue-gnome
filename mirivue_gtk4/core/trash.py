@@ -106,3 +106,38 @@ def delete(row):
 def open_item(row):
     if row.trash_uri:
         Gio.AppInfo.launch_default_for_uri(row.trash_uri, None)
+
+
+def trash_tracked(path):
+    """Return the unambiguous new trash entry, never guess an older entry."""
+    path = Path(path).absolute()
+    try:
+        before = {row.trash_uri for row in rows() if row.original_path == str(path)}
+    except GLib.Error:
+        before = None
+    Gio.File.new_for_path(str(path)).trash(None)
+    if before is None:
+        return None
+    try:
+        candidates = [row for row in rows() if row.original_path == str(path) and row.trash_uri not in before]
+    except GLib.Error:
+        return None
+    return candidates[0].trash_uri if len(candidates) == 1 else None
+
+
+def entry_signature(uri):
+    info = Gio.File.new_for_uri(uri).query_info(
+        'standard::type,standard::size,time::modified,time::modified-usec',
+        Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, None)
+    return (int(info.get_file_type()), info.get_size(),
+            info.get_attribute_uint64('time::modified'), info.get_attribute_uint32('time::modified-usec'))
+
+
+def restore_tracked(uri, destination, signature):
+    destination = Path(destination)
+    import os
+    if os.path.lexists(destination):
+        raise FileExistsError(tr('Un élément porte déjà ce nom dans le dossier d’origine.'))
+    if entry_signature(uri) != signature:
+        raise ValueError(tr('L’élément de la corbeille a changé ; restauration interrompue.'))
+    Gio.File.new_for_uri(uri).move(Gio.File.new_for_path(str(destination)), Gio.FileCopyFlags.NONE, None, None)

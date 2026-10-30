@@ -4,9 +4,9 @@ import os
 from pathlib import Path
 
 
-def matching_paths(folder, needle, cancelled, include_hidden=False):
+def matching_paths(folder, needle, cancelled, include_hidden=False, allow_empty=False, warning=lambda text: None):
     needle = needle.casefold().strip()
-    if not needle:
+    if not needle and not allow_empty:
         return
 
     from gi.repository import Gio
@@ -19,8 +19,8 @@ def matching_paths(folder, needle, cancelled, include_hidden=False):
         except Exception:
             return not path.name.startswith('.')
 
-    def failed(_error):
-        return None
+    def failed(error):
+        warning(str(error))
 
     for root, dirs, files in os.walk(folder, topdown=True, followlinks=False, onerror=failed):
         if cancelled():
@@ -35,3 +35,32 @@ def matching_paths(folder, needle, cancelled, include_hidden=False):
                 return
             if needle in name.casefold():
                 yield Path(root) / name
+
+
+def matching_files(folder, needle, cancellable, include_hidden=False, warning=lambda text: None):
+    """Enumerate recursive backend URIs through GIO; never convert to local paths."""
+    from gi.repository import Gio, GLib
+    from .gio_backend import DIRECTORY_ATTRIBUTES, row_from_info
+    stack = [folder]
+    while stack and not cancellable.is_cancelled():
+        parent = stack.pop()
+        try:
+            enumerator = parent.enumerate_children(DIRECTORY_ATTRIBUTES,
+                Gio.FileQueryInfoFlags.NOFOLLOW_SYMLINKS, cancellable)
+            try:
+                while not cancellable.is_cancelled():
+                    info = enumerator.next_file(cancellable)
+                    if info is None:
+                        break
+                    if not include_hidden and (info.get_is_hidden() or info.get_is_backup()):
+                        continue
+                    file = parent.get_child(info.get_name())
+                    if info.get_file_type() == Gio.FileType.DIRECTORY:
+                        stack.append(file)
+                    if not needle or needle.casefold() in info.get_display_name().casefold():
+                        yield row_from_info(parent, info)
+            finally:
+                enumerator.close(None)
+        except GLib.Error as error:
+            if not cancellable.is_cancelled():
+                warning(parent.get_parse_name() + ' : ' + error.message)

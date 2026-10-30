@@ -78,8 +78,15 @@ def properties(parent, paths, media_row=None):
     if not paths:
         return
     if len(paths) != 1:
-        message(parent, tr('Propriétés'), f'{len(paths)} {tr("élément(s)")}')
-        return
+        dialog = Adw.PreferencesDialog(title=tr('Propriétés'))
+        page = Adw.PreferencesPage()
+        group = Adw.PreferencesGroup()
+        page.add(group)
+        dialog.add(page)
+        from .property_totals import add_totals
+        add_totals(dialog, group, [Gio.File.new_for_path(str(path)) for path in paths])
+        dialog.present(parent)
+        return dialog
     from .core import permissions
 
     path = Path(paths[0])
@@ -99,12 +106,15 @@ def properties(parent, paths, media_row=None):
         (tr('Nom'), path.name),
         (tr('Emplacement'), str(path.parent)),
         (tr('Type'), tr('Lien symbolique') if link else tr('Dossier') if directory else tr('Fichier')),
-        (tr('Taille'), str(info.st_size) + ' ' + tr('octets')),
+        (tr('Taille'), '—' if directory else GLib.format_size(info.st_size)),
         (tr('Modifié'), __import__('datetime').datetime.fromtimestamp(info.st_mtime).strftime('%x %X')),
     ):
         row = Adw.ActionRow(title=title, subtitle=value)
         row.set_subtitle_selectable(True)
         group.add(row)
+    if directory:
+        from .property_totals import add_totals
+        add_totals(dialog, group, [Gio.File.new_for_path(str(path))])
     if media_row is not None:
         row = Adw.ActionRow(title=tr('Métadonnées'))
         button = Gtk.Button(label=tr('Modifier…'), valign=Gtk.Align.CENTER)
@@ -254,8 +264,9 @@ def gio_properties(parent, files):
     dialog.add(page)
     dialog.present(parent)
     if len(files) != 1:
-        group.add(Adw.ActionRow(title=tr('Éléments sélectionnés'), subtitle=str(len(files))))
-        return
+        from .property_totals import add_totals
+        add_totals(dialog, group, files)
+        return dialog
 
     def received(file, result):
         try:
@@ -264,6 +275,9 @@ def gio_properties(parent, files):
             parent.notify(error.message)
             dialog.close()
             return
+        if info.get_file_type() == Gio.FileType.DIRECTORY:
+            from .property_totals import add_totals
+            add_totals(dialog, group, files)
         for title, value in ((tr('Nom'), info.get_display_name()),
                              (tr('Emplacement'), file.get_parse_name()),
                              (tr('Type'), Gio.content_type_get_description(info.get_content_type() or 'application/octet-stream')),
@@ -272,7 +286,7 @@ def gio_properties(parent, files):
             row.set_subtitle_selectable(True)
             group.add(row)
 
-    files[0].query_info_async('standard::display-name,standard::content-type,standard::size',
+    files[0].query_info_async('standard::display-name,standard::content-type,standard::size,standard::type',
                               Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, None, received)
 
 
@@ -1615,6 +1629,12 @@ def search(parent):
     box.append(errors)
     label = Gtk.Entry(text=pane.criteria.get('label', ''), placeholder_text=tr('Étiquette'))
     box.append(label)
+    text_filters = {}
+    for key, title in (('artist', 'Artiste'), ('album', 'Album')):
+        entry = Gtk.Entry(text=pane.criteria.get(key, ''), placeholder_text=tr(title))
+        entry.update_property([Gtk.AccessibleProperty.LABEL], [tr(title)])
+        text_filters[key] = entry
+        box.append(entry)
     note = Gtk.Label(
         label=tr(
             'Ces filtres complètent la recherche par nom. Les critères multimédias utilisent les métadonnées disponibles.'
@@ -1627,13 +1647,14 @@ def search(parent):
     def apply(_):
         pane.type_filter = types[kind.get_selected()]
         pane.criteria = {k: int(v.get_value()) for k, v in values.items() if v.get_value()}
+        pane.criteria.update({key: entry.get_text().strip() for key, entry in text_filters.items() if entry.get_text().strip()})
         pane.criteria['label'] = label.get_text().strip()
         if not pane.criteria['label']:
             pane.criteria.pop('label')
         if errors.get_active():
             pane.criteria['errors'] = True
         pane.update_search_labels()
-        pane.filter.changed(Gtk.FilterChange.DIFFERENT)
+        pane.search_changed()
         pane.update_search_empty()
         win.close()
 

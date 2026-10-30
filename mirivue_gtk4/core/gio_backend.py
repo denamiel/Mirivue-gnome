@@ -203,6 +203,10 @@ def _delete_moved_tree(root, cancellable):
 def remove(file, permanent=False, cancelled=lambda: False):
     """Use backend trash, or an explicitly confirmed NOFOLLOW recursive delete."""
     Gio = _gio()
+    local = file.get_path()
+    if local is not None:
+        from .file_safety import check_removal
+        check_removal(local, recursive=permanent)
     operation = Gio.Cancellable()
     if not permanent:
         if cancelled():

@@ -6,6 +6,8 @@ from pathlib import Path
 import os
 import stat
 import uuid
+import threading
+from functools import wraps
 from .extensions import fingerprint
 from .file_moves import move_one
 from .media import companion
@@ -32,6 +34,44 @@ class FolderRecord:
 class RenameRecord:
     pairs: tuple
     signatures: tuple
+
+
+@dataclass
+class TrashRecord:
+    source: Path
+    uri: str
+    signature: tuple
+    restored_signature: tuple | None = None
+
+
+@dataclass
+class BatchRecord:
+    key: object
+    entries: list
+
+
+def record_paths(item):
+    if isinstance(item, BatchRecord):
+        return [path for child, _applied in item.entries for path in record_paths(child)]
+    if isinstance(item, RenameRecord):
+        return [path for pair in item.pairs for path in pair]
+    if isinstance(item, FolderRecord):
+        return [item.path]
+    if isinstance(item, TrashRecord):
+        return [item.source]
+    return [item.source, item.target]
+
+
+def individual_records(item):
+    return [child for child, _ in item.entries] if isinstance(item, BatchRecord) else [item]
+
+
+def synchronized(method):
+    @wraps(method)
+    def locked(self, *args, **kwargs):
+        with self.lock:
+            return method(self, *args, **kwargs)
+    return locked
 
 
 def _rename_transaction(pairs, signatures):
@@ -72,12 +112,12 @@ class UndoManager:
     def __init__(self):
         self.undo_stack = []
         self.redo_stack = []
+        self.lock = threading.RLock()
 
-    def record(self, source, target, copy):
+    def prepare_record(self, source, target, copy):
         source, target = Path(source), Path(target)
-        # Moving a directory only relocates it; removing a copied tree would
-        # discard later additions, so copied directories stay outside history.
-        if target.is_symlink() or not (target.is_file() or target.is_dir()) or target.is_dir() and copy:
+        # The complete tree signature is checked before removing a copied tree.
+        if target.is_symlink() or not (target.is_file() or target.is_dir()) :
             return False
         target_side = companion(target)
         source_side = companion(source)
@@ -94,11 +134,26 @@ class UndoManager:
             fingerprint(target_side) if target_side.is_file() else None,
             fingerprint(source_side) if copy and source_side.is_file() else None,
         )
-        self.undo_stack.append(item)
+        return item
+
+    @synchronized
+    def record_prepared(self, item, group=None):
+        if not item:
+            return False
+        if group is None:
+            self.undo_stack.append(item)
+        elif self.undo_stack and isinstance(self.undo_stack[-1], BatchRecord) and self.undo_stack[-1].key == group:
+            self.undo_stack[-1].entries.append((item, True))
+        else:
+            self.undo_stack.append(BatchRecord(group, [(item, True)]))
         self.undo_stack = self.undo_stack[-30:]
         self.redo_stack.clear()
         return True
 
+    def record(self, source, target, copy, group=None):
+        return self.record_prepared(self.prepare_record(source, target, copy), group)
+
+    @synchronized
     def record_new_folder(self, path):
         path = Path(path)
         if not path.is_dir() or any(path.iterdir()):
@@ -108,6 +163,7 @@ class UndoManager:
         self.redo_stack.clear()
         return True
 
+    @synchronized
     def record_rename(self, pairs):
         pairs = tuple((Path(source), Path(target)) for source, target in pairs)
         if not pairs:
@@ -121,10 +177,23 @@ class UndoManager:
         self.redo_stack.clear()
         return True
 
+    @synchronized
     def undo(self):
         if not self.undo_stack:
             raise ValueError(tr('Aucune opération de fichier à annuler.'))
         item = self.undo_stack[-1]
+        if isinstance(item, BatchRecord):
+            self._reverse_batch(item, False)
+            self.undo_stack.pop()
+            self.redo_stack.append(item)
+            return item
+        if isinstance(item, TrashRecord):
+            from . import trash
+            trash.restore_tracked(item.uri, item.source, item.signature)
+            item.restored_signature = _signature(item.source)
+            self.undo_stack.pop()
+            self.redo_stack.append(item)
+            return item
         if isinstance(item, FolderRecord):
             item.path.rmdir()
             self.undo_stack.pop()
@@ -139,7 +208,12 @@ class UndoManager:
         if _signature(item.target) != item.signature or _side_signature(item.target) != item.side_signature:
             raise ValueError(tr('Le fichier a changé : annulation interrompue.'))
         if item.copy:
-            item.target.unlink()
+            if item.target.is_dir():
+                from . import gio_backend
+                Gio = gio_backend._gio()
+                gio_backend.remove(Gio.File.new_for_path(str(item.target)), True)
+            else:
+                item.target.unlink()
             if item.side_signature is not None:
                 companion(item.target).unlink()
         else:
@@ -156,10 +230,30 @@ class UndoManager:
         self.redo_stack.append(item)
         return item
 
+    @synchronized
     def redo(self):
         if not self.redo_stack:
             raise ValueError(tr('Aucune opération à rétablir.'))
         item = self.redo_stack[-1]
+        if isinstance(item, BatchRecord):
+            self._reverse_batch(item, True)
+            self.redo_stack.pop()
+            self.undo_stack.append(item)
+            return item
+        if isinstance(item, TrashRecord):
+            from . import trash
+            from .file_safety import check_removal
+            if _signature(item.source) != item.restored_signature:
+                raise ValueError(tr('Le fichier restauré a changé ; rétablissement interrompu.'))
+            check_removal(item.source, recursive=True)
+            uri = trash.trash_tracked(item.source)
+            if uri is None:
+                raise ValueError(tr('Le fichier est dans la corbeille, mais son suivi n’est pas disponible.'))
+            item.uri = uri
+            item.signature = trash.entry_signature(uri)
+            self.redo_stack.pop()
+            self.undo_stack.append(item)
+            return item
         if isinstance(item, FolderRecord):
             item.path.mkdir()
             self.redo_stack.pop()
@@ -189,6 +283,38 @@ class UndoManager:
         self.undo_stack.append(item)
         return item
 
+    def _reverse_batch(self, batch, redo):
+        candidates = [(index, item) for index, (item, applied) in enumerate(batch.entries) if applied != redo]
+        # Check the complete action before changing any child. If an I/O error
+        # still occurs later, per-child flags retain the exact completed state.
+        for _index, item in candidates:
+            if isinstance(item, TrashRecord):
+                from . import trash
+                if redo:
+                    if _signature(item.source) != item.restored_signature:
+                        raise ValueError(tr('Le fichier restauré a changé ; rétablissement interrompu.'))
+                elif os.path.lexists(item.source) or trash.entry_signature(item.uri) != item.signature:
+                    raise ValueError(tr('La restauration de la sélection n’est plus possible.'))
+                continue
+            if not isinstance(item, Record):
+                continue
+            path = item.source if redo else item.target
+            expected = item.source_signature if redo else item.signature
+            side_expected = item.source_side_signature if redo else item.side_signature
+            if _signature(path) != expected or _side_signature(path) != side_expected:
+                raise ValueError(tr('Un élément de l’opération a changé ; annulation ou rétablissement interrompu.'))
+            occupied = item.target if redo else item.source
+            if (redo or not item.copy) and os.path.lexists(occupied):
+                raise FileExistsError(tr('Un nom de destination est déjà occupé.'))
+        for index, item in (candidates if redo else reversed(candidates)):
+            manager = UndoManager()
+            (manager.redo_stack if redo else manager.undo_stack).append(item)
+            if redo:
+                manager.redo()
+            else:
+                manager.undo()
+            batch.entries[index] = (item, redo)
+
 
 def _side_signature(path):
     side = companion(path)
@@ -208,6 +334,6 @@ def _signature(path):
             if child.is_symlink():
                 raise ValueError(tr('Dossier contenant un lien non pris en charge par l’historique.'))
             entries.append((str(child.relative_to(path)), fingerprint(child)))
-            if len(entries) > 1000:
+            if len(entries) > 100000:
                 raise ValueError(tr('Dossier trop volumineux pour l’historique.'))
     return tuple(entries)

@@ -6,7 +6,7 @@ KIO ou KDE.
 
 ## Version et état
 
-**0.6.23** modernise les onglets avec libadwaita et partage les vues de fichiers
+**0.6.24** modernise les onglets avec libadwaita et partage les vues de fichiers
 avec les dossiers GVfs. Le renommage présente ses changements et conflits ;
 la recherche par nom et le résumé suivent les éléments réellement affichés.
 Les réglages de Mirivue restent indépendants de ceux de Nautilus.

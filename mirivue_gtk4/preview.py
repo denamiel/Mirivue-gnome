@@ -499,26 +499,9 @@ class Preview(Gtk.Box):
                 picture = self.fullscreen.image_picture if self.fullscreen else self.image_picture
                 picture.adjust_zoom(dy)
             return True
-        if not self.stream:
-            return False
-        if abs(dx) > abs(dy):
-            self.stream.seek(
-                max(
-                    0,
-                    min(
-                        self.stream.get_duration(),
-                        self.stream.get_timestamp() - int(dx * self.window.state.settings['seek_step'] * 1e6),
-                    ),
-                )
-            )
-        elif dy:
-            self.stream.set_muted(False)
-            self.stream.set_volume(
-                max(
-                    0, min(1, self.stream.get_volume() - dy * self.window.state.settings['volume_step'] / 100)
-                )
-            )
-        return True
+        # Leave the native volume and seek controls in charge of audio/video.
+        # Image zoom/navigation above remains available.
+        return False
 
     def track_click(self, gesture, scale, x):
         self.seek_absolute(max(0, min(1, x / max(1, scale.get_width()))))
