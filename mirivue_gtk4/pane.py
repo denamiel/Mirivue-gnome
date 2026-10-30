@@ -1566,10 +1566,10 @@ class Pane(Gtk.Box):
         if model is not None:
             model.set_file(None)
 
-    def open_remote(self, file, remember=True):
+    def open_remote(self, file, remember=True, keep_search=False):
         """GIO inventory displayed through the same native list/grid models."""
         self.stop_remote_listing()
-        self.reset_search_for_navigation()
+        self.reset_search_for_navigation(keep_search)
         self.cancel.set()
         self.cancel = threading.Event()
         self.generation += 1
@@ -1733,7 +1733,7 @@ class Pane(Gtk.Box):
 
     def open_trash(self, remember=True):
         self.stop_remote_listing()
-        self.reset_search_for_navigation()
+        self.reset_search_for_navigation(keep_search)
         self.remote_file = None
         self.stack.set_visible_child_name(self.local_view)
         self.cancel.set()
@@ -1765,7 +1765,7 @@ class Pane(Gtk.Box):
 
     def open_starred(self, remember=True):
         self.stop_remote_listing()
-        self.reset_search_for_navigation()
+        self.reset_search_for_navigation(keep_search)
         self.remote_file = None
         self.stack.set_visible_child_name(self.local_view)
         self.cancel.set()

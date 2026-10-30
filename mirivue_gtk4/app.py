@@ -832,7 +832,7 @@ class MirivueWindow(Adw.ApplicationWindow):
                 self.active.open(self.active.folder, False, keep_search=True)
             return
         if self.active.remote_file is not None:
-            self.active.open_remote(self.active.remote_file, False)
+            self.active.open_remote(self.active.remote_file, False, keep_search=True)
         elif self.active.is_trash:
             self.active.open_trash(False)
         else:
@@ -2315,7 +2315,7 @@ class MirivueWindow(Adw.ApplicationWindow):
             except GLib.Error as error:
                 self.notify(error.message)
             if pane is not None and not pane.closed and pane.generation == generation:
-                pane.open_remote(file.get_parent(), False)
+                pane.open_remote(file.get_parent(), False, keep_search=True)
 
         file.set_display_name_async(name, GLib.PRIORITY_DEFAULT, None, finished)
 
@@ -2339,7 +2339,7 @@ class MirivueWindow(Adw.ApplicationWindow):
                     self.notify(error.message)
                     return
                 if not pane.closed and pane.generation == generation:
-                    pane.open_remote(folder, False)
+                    pane.open_remote(folder, False, keep_search=True)
 
             target.make_directory_async(GLib.PRIORITY_DEFAULT, None, finished)
 
@@ -2818,7 +2818,7 @@ class MirivueWindow(Adw.ApplicationWindow):
                 if remote_refresh:
                     for pane in self.panes:
                         if pane.remote_file is not None and pane.remote_file.get_uri() in remote_refresh:
-                            pane.open_remote(pane.remote_file, False)
+                            pane.open_remote(pane.remote_file, False, keep_search=True)
                 if result.get('archive_removed'):
                     self.touch(result['archive_removed'])
                 if 'duplicates' in result:

@@ -14,12 +14,14 @@ files = sorted(
     path
     for path in source.rglob('*')
     if path.is_file()
-    and not any(part in ('__pycache__', '.pytest_cache', '.ruff_cache', '.git') for part in path.parts)
-    and path.suffix != '.pyc'
+    and not any(part in ('__pycache__', '.pytest_cache', '.ruff_cache', '.git', 'build', 'dist', '.venv') for part in path.parts)
+    and not any(part.endswith('.egg-info') for part in path.parts)
+    and path.suffix not in ('.pyc', '.run', '.zip', '.rpm', '.zst')
+    and not path.name.endswith('.tar.gz')
 )
 with ZipFile(destination / f'Mirivue-GNOME-GTK4-{version}-sources.zip', 'w', ZIP_DEFLATED) as archive:
     for path in files:
-        archive.write(path, path.relative_to(source.parent))
+        archive.write(path, Path('mirivue-gtk4') / path.relative_to(source))
 # The sources archive keeps docs/ (release-note history); the installed
 # application does not need it.
 installed = [path for path in files if path.relative_to(source).parts[0] != 'docs']

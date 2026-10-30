@@ -2152,6 +2152,7 @@ def shortcuts(parent):
                     [
                         ('Nouvel onglet', '<Control>t'),
                         ('Fermer l’onglet ou la fenêtre', '<Control>w'),
+                        ('Rouvrir l’onglet fermé', '<Control><Shift>t'),
                         ('Onglet précédent', '<Control>Page_Up'),
                         ('Onglet suivant', '<Control>Page_Down'),
                     ],
