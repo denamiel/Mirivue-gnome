@@ -2,7 +2,7 @@
 
 from ..i18n import tr, trf
 
-import base64, os, shutil, subprocess, tempfile, uuid, json
+import base64, os, shutil, subprocess, tempfile, json
 from pathlib import Path
 import xml.etree.ElementTree as ET
 from .extensions import fingerprint
@@ -483,7 +483,11 @@ def safe_edit(row, changes, route, backup=True, cancelled=lambda: False):
     fd, name = tempfile.mkstemp(prefix='.mirivue-', suffix=target.suffix, dir=target.parent)
     os.close(fd)
     temporary = Path(name)
+    from . import backup_policy
     backup_path = None
+    backup_created = False
+    backup_expected = None
+    published = False
     try:
         if target.exists():
             shutil.copy2(target, temporary)
@@ -534,10 +538,9 @@ def safe_edit(row, changes, route, backup=True, cancelled=lambda: False):
                 tr('Le fichier a été modifié par un autre logiciel ; l’enregistrement est annulé.')
             )
         if backup and target.exists():
-            backup_path = Path(str(target) + '.mirivue-original-' + uuid.uuid4().hex[:10])
-            with target.open('rb') as src, backup_path.open('xb') as dst:
-                shutil.copyfileobj(src, dst)
-            shutil.copystat(target, backup_path)
+            backup_path, backup_created = backup_policy.reserve_backup(target, cancelled)
+            backup_expected = (backup_policy._signature(backup_path),
+                               fingerprint(backup_policy._names(target)[1]))
         if cancelled():
             raise InterruptedError()
         if (
@@ -548,6 +551,11 @@ def safe_edit(row, changes, route, backup=True, cancelled=lambda: False):
         with temporary.open('rb') as stream:
             os.fsync(stream.fileno())
         os.replace(temporary, target)
+        published = True
+        if backup_path is not None:
+            backup_policy.record_backup(target, backup_path)
         return str(backup_path) if backup_path else ''
     finally:
         temporary.unlink(missing_ok=True)
+        if backup_path is not None and not published:
+            backup_policy.discard_new_backup(target, backup_path, backup_created, backup_expected)

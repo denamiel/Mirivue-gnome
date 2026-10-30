@@ -7,7 +7,7 @@ import io
 from pathlib import Path
 import tarfile
 
-from check_release import ROOT, version
+from check_release import ROOT, version, package_version
 
 EXCLUDED = {'.git', '__pycache__', '.venv', '.pytest_cache', '.ruff_cache', 'dist', 'build'}
 
@@ -42,7 +42,7 @@ def build(destination, make_aur=True):
         aur = destination / 'aur'
         aur.mkdir(exist_ok=True)
         recipe = (ROOT / 'packaging/arch/PKGBUILD.in').read_text()
-        (aur / 'PKGBUILD').write_text(recipe.replace('@VERSION@', current).replace('@SHA256@', digest))
+        (aur / 'PKGBUILD').write_text(recipe.replace('@VERSION@', current).replace('@ARCH_VERSION@', package_version(current, 'arch')).replace('@SHA256@', digest))
     print(target)
     return target
 

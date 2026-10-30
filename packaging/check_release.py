@@ -14,25 +14,48 @@ def version():
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(getattr(t, 'id', '') == '__version__' for t in node.targets):
             value = ast.literal_eval(node.value)
-            if re.fullmatch(r'\d+\.\d+\.\d+', value):
+            if re.fullmatch(r'\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.[1-9]\d*)?', value):
                 return value
     raise ValueError('Version absente ou invalide')
+
+
+def package_version(value, ecosystem):
+    """Map the displayed version to each package manager's prerelease syntax."""
+    match = re.fullmatch(r'(\d+\.\d+\.\d+)(?:-(alpha|beta|rc)\.([1-9]\d*))?', value)
+    if not match:
+        raise ValueError('Version absente ou invalide')
+    base, stage, number = match.groups()
+    if not stage or ecosystem == 'display':
+        return value
+    if ecosystem == 'rpm':
+        return base + '~' + stage + '.' + number
+    if ecosystem == 'arch':
+        return base + stage + number
+    if ecosystem == 'python':
+        return base + {'alpha': 'a', 'beta': 'b', 'rc': 'rc'}[stage] + number
+    raise ValueError('Format de version inconnu')
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--require-license', action='store_true')
     parser.add_argument('--tag')
+    parser.add_argument('--format', choices=('display', 'rpm', 'arch', 'python'))
     args = parser.parse_args()
     current = version()
+    if args.format:
+        print(package_version(current, args.format))
+        return
     config = json.loads((ROOT / 'packaging/release.json').read_text())
     spec = (ROOT / 'packaging/fedora/mirivue-gnome.spec').read_text()
-    if not re.search(r'^Version:\s+' + re.escape(current) + r'\s*$', spec, re.M):
+    if not re.search(r'^Version:\s+' + re.escape(package_version(current, 'rpm')) + r'\s*$', spec, re.M):
         parser.error('La version RPM ne correspond pas aux sources')
     if f"VERSION = '{current}'" not in (ROOT / 'packaging/install_gnome.py').read_text():
         parser.error('La version du programme .run ne correspond pas aux sources')
     if args.tag and args.tag != f'v{current}':
         parser.error(f'Le tag attendu est v{current}')
+    if '-' in current and f'%global upstream_version {current}' not in spec:
+        parser.error('La version des sources RPM ne correspond pas aux sources')
     desktop = (ROOT / 'org.pdenams.Mirivue.Gtk4.desktop').read_text()
     if 'Exec=mirivue-gnome %U' not in desktop or '/home/' in desktop:
         parser.error('Le lanceur de paquet doit être indépendant du compte utilisateur')

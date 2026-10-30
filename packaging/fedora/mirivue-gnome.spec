@@ -1,10 +1,11 @@
 Name:           mirivue-gnome
-Version:        0.6.24
+%global upstream_version 1.0.0-beta.1
+Version:        1.0.0~beta.1
 Release:        1%{?dist}
 Summary:        GNOME file and media manager with two panes
 License:        GPL-3.0-or-later
 URL:            https://github.com/denamiel/Mirivue-gnome
-Source0:        %{url}/releases/download/v%{version}/%{name}-%{version}.tar.gz
+Source0:        %{url}/releases/download/v%{upstream_version}/%{name}-%{upstream_version}.tar.gz
 BuildArch:      noarch
 
 BuildRequires:  python3-devel
@@ -47,7 +48,7 @@ Mirivue GNOME is a GTK4 and libadwaita file manager with two panes,
 tabs, media information, previews and background file operations.
 
 %prep
-%autosetup
+%autosetup -n %{name}-%{upstream_version}
 
 %generate_buildrequires
 %pyproject_buildrequires
@@ -73,5 +74,8 @@ xvfb-run -a dbus-run-session -- bash packaging/verify.sh
 %{_datadir}/mirivue-gnome/
 
 %changelog
+* Fri Oct 30 2026 Mirivue contributors - 1.0.0~beta.1-1
+- First 1.0 beta; preserve the first original with verified provenance.
+
 * Fri Oct 30 2026 Mirivue contributors - 0.6.24-1
 - Prepare independent GTK4 packages under GPL-3.0-or-later.

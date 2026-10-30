@@ -1,6 +1,8 @@
 """Check runtime data and console entry point in the built wheel."""
 
 from pathlib import Path
+from email.parser import Parser
+from check_release import version, package_version
 import sys
 from zipfile import ZipFile
 
@@ -8,6 +10,10 @@ from zipfile import ZipFile
 def check(path):
     with ZipFile(path) as wheel:
         names = wheel.namelist()
+        metadata = next(n for n in names if n.endswith('.dist-info/METADATA'))
+        installed_version = Parser().parsestr(wheel.read(metadata).decode())['Version']
+        if installed_version != package_version(version(), 'python'):
+            raise ValueError('La version Python de la wheel ne correspond pas aux sources')
         required = ['mirivue_gtk4/en.json', 'mirivue_gtk4/help.fr.txt', 'mirivue_gtk4/help.en.txt',
                     'mirivue_gtk4/launcher.py']
         for name in required:

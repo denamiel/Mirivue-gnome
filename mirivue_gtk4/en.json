@@ -1415,5 +1415,16 @@
   "Nouvelle fenêtre": "New Window",
   "Ouvrir dans de nouveaux onglets": "Open in New Tabs",
   "Ouvrir dans de nouvelles fenêtres": "Open in New Windows",
-  "Dossier vide": "Empty folder"
+  "Dossier vide": "Empty folder",
+  "Sauvegarde réservée aux fichiers ordinaires.": "Backups require regular files.",
+  "Le fichier a changé pendant sa vérification.": "The file changed during verification.",
+  "Sauvegarde existante incomplète ou non reconnue ; vérifiez-la avant de modifier ce fichier.": "The existing backup is incomplete or unrecognized; check it before editing this file.",
+  "Données de sauvegarde trop volumineuses.": "Backup tracking data is too large.",
+  "Impossible de vérifier la sauvegarde existante.": "Cannot verify the existing backup.",
+  "Suivi de la sauvegarde non reconnu ; aucune donnée ne sera écrasée.": "Unrecognized backup tracking data; no data will be overwritten.",
+  "Le fichier ne correspond plus à sa sauvegarde initiale ; aucune sauvegarde ne sera écrasée.": "The file no longer matches its original backup; no backup will be overwritten.",
+  "Espace insuffisant pour sauvegarder l’original.": "Not enough space to back up the original.",
+  "Le fichier a changé pendant la sauvegarde ; original conservé.": "The file changed during backup; original preserved.",
+  "Sauvegarde remplacée pendant la publication.": "The backup was replaced during publication.",
+  "Sauvegarde modifiée pendant la publication.": "The backup changed during publication."
 }

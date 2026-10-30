@@ -1,5 +1,13 @@
 # Journal des modifications — Mirivue GNOME GTK4
 
+## 1.0.0-beta.1 — 30 octobre 2026
+
+- Première bêta 1.0 de l'édition GNOME ; identité de l'application et chemins des réglages conservés.
+- Sauvegarde du premier original lors des modifications de métadonnées, avec suivi de provenance et contrôle avant réutilisation.
+- Les anciennes sauvegardes successives ne sont ni supprimées ni automatiquement adoptées comme premier original.
+- Refus des sauvegardes inconnues, incomplètes ou modifiées ; conservation de l'original en cas d'échec ou d'annulation.
+- Versions adaptées aux paquets : Fedora `1.0.0~beta.1`, Arch `1.0.0beta1`, Python `1.0.0b1`, avec transition prévue vers la version stable.
+
 ## 0.6.24 — 30 octobre 2026
 
 - Protection des racines de volumes avant suppression et vérification de la sélection.
