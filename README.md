@@ -6,7 +6,7 @@ KIO ou KDE.
 
 ## Version et état
 
-0.6.22 prépare la distribution native à partir des sources 0.6.21.
+0.6.23 prépare la distribution native à partir des sources 0.6.21.
 Les fichiers de paquet, le lanceur installé et les tests automatiques sont prêts
 à être vérifiés par les outils de construction Fedora et Arch.
 Ce dépôt ne doit pas être présenté comme une version stable déjà validée.

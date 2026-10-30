@@ -11,17 +11,20 @@ def _gio():
     return Gio
 
 
-def local_icon(path):
+def local_icon(path, row=None):
     """Ask the file backend for its actual content icon, off the UI thread."""
     Gio = _gio()
     try:
         from gi.repository import GLib
 
         info = Gio.File.new_for_path(str(path)).query_info(
-            'standard::icon,standard::content-type,standard::type,metadata::custom-icon',
+            'standard::icon,standard::content-type,standard::type,standard::is-hidden,standard::is-backup,metadata::custom-icon',
             Gio.FileQueryInfoFlags.NONE,
             None,
         )
+        if row is not None:
+            row.file_hidden = info.get_is_hidden() or info.get_is_backup()
+            row.content_type = info.get_content_type()
         custom = info.get_attribute_string('metadata::custom-icon')
         if custom:
             return Gio.FileIcon.new(Gio.File.new_for_uri(custom))
@@ -48,6 +51,43 @@ def local_icon(path):
         return info.get_icon()
     except Exception:
         return None
+
+
+def enrich_file_info(row):
+    row.file_icon = local_icon(row.path, row)
+
+
+DIRECTORY_ATTRIBUTES = ('standard::name,standard::display-name,standard::type,standard::size,'
+                        'standard::icon,standard::content-type,standard::is-hidden,standard::is-backup,'
+                        'time::modified,thumbnail::path,thumbnail::is-valid')
+
+
+def row_from_info(folder, info):
+    """Keep the actual GFile, including its backend URI; never fabricate a local path."""
+    from pathlib import Path
+    from .metadata import Video, quantity
+    Gio = _gio()
+    file = folder.get_child(info.get_name())
+    directory = info.get_file_type() == Gio.FileType.DIRECTORY
+    # Path supplies only a basename to code that renders names. Every remote
+    # operation must use gio_file, and never hand this display-only path to I/O.
+    row = Video(Path(info.get_name()), is_dir=directory, is_video=False, media_type='other')
+    row.gio_file = file
+    row.content_type = info.get_content_type() or 'application/octet-stream'
+    row.file_icon = info.get_icon()
+    row.file_hidden = info.get_is_hidden() or info.get_is_backup()
+    row.values[0] = info.get_display_name()
+    row.values[1] = '' if directory else quantity(info.get_size(), ['o', 'Kio', 'Mio', 'Gio', 'Tio'], 1024)
+    row.sort_values[0] = info.get_display_name()
+    row.sort_values[1] = -1 if directory else info.get_size()
+    if info.has_attribute('time::modified'):
+        row.modified_ns = info.get_attribute_uint64('time::modified') * 1000000000
+        row.sort_values[14] = row.modified_ns
+    for kind in ('video', 'audio', 'image'):
+        if Gio.content_type_is_a(row.content_type, kind + '/*'):
+            row.media_type = kind
+            break
+    return row
 
 
 def browse(folder, cancellable=None, include_icons=False):
