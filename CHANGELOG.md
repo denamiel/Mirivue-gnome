@@ -1,3 +1,5 @@
+# Journal des modifications — Mirivue GNOME GTK4
+
 ## 0.6.23 — 30 octobre 2026
 
 - Onglets natifs Adw.TabView/TabBar : déplacement, détachement, réouverture et aperçu adaptatif.
@@ -8,8 +10,6 @@
 - Presse-papiers distant GNOME, conservation des URI ; ouverture de plusieurs emplacements.
 - Choix d’application pour une sélection hétérogène avec recherche.
 - Réglages, fichiers personnels et anciennes sauvegardes conservés.
-
-# Journal des modifications — Mirivue GNOME GTK4
 
 ## 0.6.22
 

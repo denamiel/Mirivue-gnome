@@ -1561,6 +1561,9 @@ class Pane(Gtk.Box):
         self.set_loading(False)
 
     def stop_remote_listing(self):
+        if getattr(self, 'remote_reload_timer', 0):
+            GLib.source_remove(self.remote_reload_timer)
+            self.remote_reload_timer = 0
         model = getattr(self, 'remote_model', None)
         self.remote_model = None
         if model is not None:
@@ -1598,6 +1601,10 @@ class Pane(Gtk.Box):
             self.history_position = len(self.history) - 1
         self.window.activate_pane(self)
         model = Gtk.DirectoryList.new(gio_backend.DIRECTORY_ATTRIBUTES, None)
+        # GtkDirectoryList's internal monitor can dispose queued query-info
+        # events before their callbacks return when a view changes directory.
+        # Use GIO's native monitor separately, keeping inventory in GTK.
+        model.set_monitored(False)
         self.remote_model = model
 
         def changed(source, position, removed, added):
@@ -1649,6 +1656,24 @@ class Pane(Gtk.Box):
         model.connect('notify::loading', loading)
         model.set_file(file)
         loading(model, None)
+
+        def reload_directory():
+            self.remote_reload_timer = 0
+            if not self.closed and generation == self.generation and self.remote_file is not None:
+                self.open_remote(file, False, keep_search=True)
+            return False
+
+        def directory_changed(*_args):
+            if self.closed or generation != self.generation:
+                return
+            if not getattr(self, 'remote_reload_timer', 0):
+                self.remote_reload_timer = GLib.timeout_add(100, reload_directory)
+
+        try:
+            self.monitor = file.monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, None)
+            self.monitor.connect('changed', directory_changed)
+        except GLib.Error:
+            self.monitor = None
 
         def permissions(source, result):
             if self.closed or generation != self.generation:
@@ -1733,7 +1758,7 @@ class Pane(Gtk.Box):
 
     def open_trash(self, remember=True):
         self.stop_remote_listing()
-        self.reset_search_for_navigation(keep_search)
+        self.reset_search_for_navigation()
         self.remote_file = None
         self.stack.set_visible_child_name(self.local_view)
         self.cancel.set()
@@ -1765,7 +1790,7 @@ class Pane(Gtk.Box):
 
     def open_starred(self, remember=True):
         self.stop_remote_listing()
-        self.reset_search_for_navigation(keep_search)
+        self.reset_search_for_navigation()
         self.remote_file = None
         self.stack.set_visible_child_name(self.local_view)
         self.cancel.set()

@@ -16,7 +16,8 @@
   sinon le modèle filtré, et non l'inventaire non filtré.
 - Collation des noms : `GLib.utf8_collate_key_for_filename`. Visibilité :
   attributs GIO `standard::is-hidden` et `standard::is-backup`.
-- GVfs : `Gtk.DirectoryList` fournit l'inventaire asynchrone et sa surveillance.
+- GVfs : `Gtk.DirectoryList` fournit l'inventaire asynchrone ; `Gio.FileMonitor`
+  assure la surveillance.
   Le même modèle de sélection, la même liste et la même grille affichent les
   éléments. Chaque ligne conserve son vrai `Gio.File` : aucune URI n'est
   utilisée comme chemin local pour les opérations.
@@ -63,3 +64,13 @@ GNOME/Wayland, et ne prouvent pas une identité visuelle intégrale avec Nautilu
 Aucune dépendance KDE/KIO/Qt/PySide ou nouvelle dépendance système n'est ajoutée.
 Les préférences Nautilus ne sont pas écrites. Les anciennes sauvegardes et
 la politique d'écriture des métadonnées sont conservées.
+
+## Surveillance GIO
+
+Le moniteur interne de `Gtk.DirectoryList` est désactivé. Les essais ont révélé
+un accès mémoire invalide lors de sa destruction avec une requête de moniteur
+en attente (trace native : `g_file_query_info_finish`, puis `handle_events`).
+Le code officiel GTK conserve ces événements dans une file libérée à la
+destruction. Mirivue utilise donc `Gio.FileMonitor` séparément pour demander
+un nouvel inventaire GTK après les changements. Aucun moniteur de fichiers
+n'est réimplémenté en Python. La recherche active est conservée au rafraîchissement.
