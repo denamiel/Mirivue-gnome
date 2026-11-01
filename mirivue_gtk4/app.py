@@ -8,7 +8,7 @@ import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
 from gi.repository import Adw, Gtk, Gio, Gdk, GLib
-from . import __version__, i18n
+from . import __version__, BUILD_REVISION, i18n
 from .i18n import tr, trf
 from .backend import State, MediaService, JobQueue
 from .tabs import TabGroup
@@ -3229,7 +3229,8 @@ class MirivueWindow(Adw.ApplicationWindow):
             developer_name='pdenams',
             copyright='© 2026 Mirivue contributors',
             license_type=Gtk.License.GPL_3_0,
-            comments=tr('Gestionnaire local de fichiers multimédias pour GNOME.'),
+            comments=(tr('Gestionnaire local de fichiers multimédias pour GNOME.')
+                      + '\n' + tr('Révision du paquet : ') + BUILD_REVISION),
         ).present(self)
 
 

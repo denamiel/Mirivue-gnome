@@ -1,7 +1,7 @@
 Name:           mirivue-gnome
 %global upstream_version 1.0.0-beta.2
 Version:        1.0.0~beta.2
-Release:        2%{?dist}
+Release:        3%{?dist}
 Summary:        GNOME file and media manager with two panes
 License:        GPL-3.0-or-later
 URL:            https://github.com/denamiel/Mirivue-gnome
@@ -54,6 +54,7 @@ tabs, media information, previews and background file operations.
 %pyproject_buildrequires
 
 %build
+sed -i "s/^BUILD_REVISION = .*/BUILD_REVISION = '%{release}.noarch'/" mirivue_gtk4/__init__.py
 %pyproject_wheel
 
 %install

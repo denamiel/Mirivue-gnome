@@ -21,6 +21,7 @@ sha256sums=('@SHA256@')
 
 build() {
   cd "$pkgname-$_upstreamver"
+  sed -i "s/^BUILD_REVISION = .*/BUILD_REVISION = '$pkgver-$pkgrel (Arch)'/" mirivue_gtk4/__init__.py
   /usr/bin/python3 -m build --wheel --no-isolation
 }
 
