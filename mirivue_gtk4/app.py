@@ -3166,12 +3166,39 @@ class MirivueWindow(Adw.ApplicationWindow):
     def close_requested(self, *_):
         if self.closed:
             return False
+        if any(j.state in ('queued', 'running') for j in self.jobs.jobs):
+            # Keep the registered window and its workers alive without
+            # requiring AppIndicator or cancelling queued operations.
+            self.set_visible(False)
+            application = self.get_application()
+            notice = Gio.Notification.new(tr('Opérations de fichiers en cours'))
+            notice.set_body(tr('Les opérations continuent en arrière-plan. Rouvrez Mirivue pour suivre leur progression.'))
+            application.send_notification('background-operations', notice)
+            if not getattr(self, '_background_close_timer', 0):
+                self._background_close_timer = GLib.timeout_add(250, self.finish_background_close)
+            return True
         if self.state.settings['minimize_to_tray'] and appindicator_available():
             self.sync_indicator()
             GLib.idle_add(lambda: (self.set_visible(False), False)[1])
             return True
         self.request_quit()
         return True
+
+    def finish_background_close(self):
+        if self.closed or self.get_visible():
+            self._background_close_timer = 0
+            self.get_application().withdraw_notification('background-operations')
+            return False
+        if any(j.state in ('queued', 'running') for j in self.jobs.jobs):
+            return True
+        self._background_close_timer = 0
+        application = self.get_application()
+        application.withdraw_notification('background-operations')
+        notice = Gio.Notification.new(tr('Opérations terminées'))
+        notice.set_body(tr('Consultez l’historique des opérations dans Mirivue pour les résultats et les éventuelles erreurs.'))
+        application.send_notification('background-operations-finished', notice)
+        self.shutdown()
+        return False
 
     def shutdown(self):
         if self.closed:

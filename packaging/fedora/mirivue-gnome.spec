@@ -1,7 +1,7 @@
 Name:           mirivue-gnome
 %global upstream_version 1.0.0-beta.2
 Version:        1.0.0~beta.2
-Release:        3%{?dist}
+Release:        4%{?dist}
 Summary:        GNOME file and media manager with two panes
 License:        GPL-3.0-or-later
 URL:            https://github.com/denamiel/Mirivue-gnome
