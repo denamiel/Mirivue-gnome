@@ -1,0 +1,41 @@
+name: GNOME — anticipation Python et Fedora
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '41 5 * * 1'
+permissions:
+  contents: read
+
+jobs:
+  rawhide:
+    name: Fedora Rawhide — dépendances, tests et fenêtre GTK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: fedora:rawhide
+    env:
+      GSK_RENDERER: cairo
+    steps:
+      - name: Préparer la construction
+        run: dnf -y install git rpm-build python3 dnf5-plugins
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Construire et tester avec le Python de développement Fedora
+        run: |
+          python3 --version
+          dnf -y builddep packaging/fedora/mirivue-gnome.spec
+          python3 packaging/make_source.py --output packaging/fedora --no-aur
+          rpmbuild -ba --define "_sourcedir $PWD/packaging/fedora" --define "_rpmdir $PWD/dist/rpms" --define "_srcrpmdir $PWD/dist/srpms" --define "_smp_build_ncpus 2" packaging/fedora/mirivue-gnome.spec
+      - name: Tester le paquet installé
+        run: |
+          dnf -y --setopt=tsflags= install --allowerasing dist/rpms/noarch/*.rpm
+          cd /tmp
+          mirivue-gnome --version
+          xvfb-run -a dbus-run-session -- timeout 40 mirivue-gnome --window-smoke-test
+      - name: Expliquer un échec d'anticipation
+        if: failure()
+        run: |
+          echo 'Échec sur Fedora Rawhide : examiner les dépendances et les tests avant de prendre en charge la prochaine Fedora. Ce workflow ne publie aucun paquet et ne remplace pas les contrôles Fedora stables.' >> "$GITHUB_STEP_SUMMARY"
