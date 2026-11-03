@@ -128,3 +128,17 @@ fonctionne indépendamment de cette démarche.
 - https://man.archlinux.org/man/PKGBUILD.5.en
 - https://wiki.archlinux.org/title/AUR_submission_guidelines
 - https://docs.github.com/en/actions
+
+## Anticiper les évolutions de Python
+
+Les métadonnées demandent Python >= 3.11, sans limite supérieure spéculative.
+Les dépendances GTK/PyGObject et les macros RPM continuent à vérifier leur propre
+compatibilité avec le Python de la distribution.
+
+Le workflow `python-forward.yml` teste Fedora Rawhide à chaque modification,
+à la demande et chaque lundi : construction RPM, suite de tests GTK et lancement
+du paquet installé. Il ne publie aucun paquet. Un échec de ce contrôle indique
+une évolution à examiner ; il ne signifie pas que Fedora 44/45 est en échec.
+Les validations Fedora stables du workflow principal restent nécessaires.
+Cette anticipation réduit le risque sans garantir la compatibilité de toute
+future version de Python ou de ses bibliothèques.
