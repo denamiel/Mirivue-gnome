@@ -37,4 +37,5 @@ jobs:
           xvfb-run -a dbus-run-session -- timeout 40 mirivue-gnome --window-smoke-test
       - name: Expliquer un échec d'anticipation
         if: failure()
-        run: echo 'Échec sur Fedora Rawhide : examiner les dépendances et les tests avant de prendre en charge la prochaine Fedora. Ce workflow ne publie aucun paquet et ne remplace pas les contrôles Fedora stables.' >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          echo 'Échec sur Fedora Rawhide : examiner les dépendances et les tests avant de prendre en charge la prochaine Fedora. Ce workflow ne publie aucun paquet et ne remplace pas les contrôles Fedora stables.' >> "$GITHUB_STEP_SUMMARY"
