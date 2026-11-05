@@ -1,7 +1,7 @@
 Name:           mirivue-gnome
 %global upstream_version 1.0.0-beta.2
 Version:        1.0.0~beta.2
-Release:        4%{?dist}
+Release:        5%{?dist}
 Summary:        GNOME file and media manager with two panes
 License:        GPL-3.0-or-later
 URL:            https://github.com/denamiel/Mirivue-gnome
@@ -77,6 +77,9 @@ xvfb-run -a dbus-run-session -- bash packaging/verify.sh
 %{_datadir}/mirivue-gnome/
 
 %changelog
+* Thu Nov 05 2026 Mirivue contributors - 1.0.0~beta.2-5
+- Deliver cancellable GIO replacements as an identifiable package upgrade.
+
 * Sat Oct 31 2026 Mirivue contributors - 1.0.0~beta.2-2
 - Ship and verify updated installation and publication guides.
 
