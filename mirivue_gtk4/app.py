@@ -2137,7 +2137,8 @@ class MirivueWindow(Adw.ApplicationWindow):
                     file, target, not move, cancelled,
                     lambda source, target, replace, merge: self.resolve_transfer_conflict(
                         source, target, replace, merge, cancelled),
-                    self.undo_manager, confirmed=confirmed_merge)
+                    self.undo_manager, confirmed=confirmed_merge,
+                    progress=lambda done, total: report(done / total if total else None, file.get_parse_name()))
                 records.extend(entries)
                 changed.extend(updates)
                 warnings.extend(errors)

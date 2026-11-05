@@ -1,3 +1,9 @@
+# Correction des remplacements GIO — 5 novembre 2026
+
+- Transmission de l’annulation et de la progression lors des remplacements explicites GIO, y compris sans notification de progression.
+- Actualisation des destinations après un remplacement interrompu ou échoué ; absence d’historique d’annulation trompeur.
+- Conservation du parcours local et de ses sauvegardes, du renommage en masse et des transactions XMP.
+
 # Journal des modifications — Mirivue GNOME GTK4
 
 ## 1.0.0-beta.2 — 30 octobre 2026

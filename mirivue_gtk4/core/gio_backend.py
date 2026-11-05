@@ -319,3 +319,43 @@ def transfer(sources, destination, move=False, cancelled=lambda: False, progress
                 )
         results.append((source, target, warning))
     return results
+
+
+def replace(source, target, move=False, cancelled=lambda: False,
+            progress=lambda done, total: None):
+    """Explicit GIO overwrite, cancellable even while no progress arrives."""
+    import threading
+    Gio = _gio()
+    if cancelled():
+        raise InterruptedError()
+    operation = Gio.Cancellable()
+    finished = threading.Event()
+
+    def watch():
+        while not finished.wait(0.05):
+            if cancelled():
+                operation.cancel()
+                return
+
+    def update(done, total, *_data):
+        if cancelled():
+            operation.cancel()
+        progress(done, total)
+
+    watcher = threading.Thread(target=watch, name='gio-replace-cancel', daemon=True)
+    watcher.start()
+    try:
+        flags = Gio.FileCopyFlags.OVERWRITE | Gio.FileCopyFlags.NOFOLLOW_SYMLINKS
+        if cancelled():
+            operation.cancel()
+        if move:
+            source.move(target, flags, operation, update, None)
+        else:
+            source.copy(target, flags, operation, update, None)
+    except Exception as error:
+        if operation.is_cancelled():
+            raise InterruptedError() from error
+        raise
+    finally:
+        finished.set()
+        watcher.join()

@@ -7,7 +7,7 @@ from ..i18n import tr
 from .file_safety import check_removal
 
 
-def merge(source, target, copy, cancelled, decide, history, confirmed=False):
+def merge(source, target, copy, cancelled, decide, history, confirmed=False, progress=lambda done, total: None):
     records = []
     changed = []
     warnings = []
@@ -75,18 +75,17 @@ def merge(source, target, copy, cancelled, decide, history, confirmed=False):
                 # silently switch a failed trash operation to permanent delete.
                 if directory or target_directory:
                     return
-                if copy:
-                    file.copy(destination, Gio.FileCopyFlags.OVERWRITE | Gio.FileCopyFlags.NOFOLLOW_SYMLINKS,
-                              None, None, None)
-                else:
-                    file.move(destination, Gio.FileCopyFlags.OVERWRITE, None, None, None)
-                complete_history = False
+                # An interrupted overwrite may alter its target: refresh it,
+                # and do not retain a misleading undo record.
                 changed.extend([file.get_uri(), destination.get_uri()])
+                complete_history = False
+                gio_backend.replace(file, destination, move=not copy,
+                                    cancelled=cancelled, progress=progress)
                 return
             else:
                 raise ValueError(tr('Opération interrompue.'))
         gio_backend.transfer([file], destination.get_parent(), move=not copy, cancelled=cancelled,
-                             names={file.get_uri(): destination.get_basename()})
+                             names={file.get_uri(): destination.get_basename()}, progress=progress)
         changed.extend([file.get_uri(), destination.get_uri()])
         if file.get_path() and destination.get_path():
             try:
