@@ -1424,5 +1424,6 @@
   "Espace insuffisant pour sauvegarder l’original.": "Not enough space to back up the original.",
   "Le fichier a changé pendant la sauvegarde ; original conservé.": "The file changed during backup; original preserved.",
   "Sauvegarde remplacée pendant la publication.": "The backup was replaced during publication.",
-  "Sauvegarde modifiée pendant la publication.": "The backup changed during publication."
+  "Sauvegarde modifiée pendant la publication.": "The backup changed during publication.",
+  "Majuscule au début des mots": "Capitalize words"
 }
