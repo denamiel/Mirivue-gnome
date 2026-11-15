@@ -1,3 +1,7 @@
+# Renommage — 15 novembre 2026
+
+- Ajout de « Majuscule au début des mots » au renommage en masse : normalisation préalable en minuscules, puis majuscules après les espaces, tirets et tirets bas, comme dans Mirivue KDE 1.0.1. Les extensions des fichiers sont conservées.
+
 # Correction des remplacements GIO — 5 novembre 2026
 
 - Transmission de l’annulation et de la progression lors des remplacements explicites GIO, y compris sans notification de progression.

@@ -420,7 +420,7 @@ def bulk_rename(parent, rows_override=None, folder=None):
     win, box, header = window(
         parent, tr('Renommer le contenu du dossier…') if folder else tr('Renommer en masse…')
     )
-    modes = ['manual', 'prefix', 'suffix', 'replace', 'number', 'metadata']
+    modes = ['manual', 'prefix', 'suffix', 'replace', 'number', 'metadata', 'title']
     labels = [
         'Modifier les noms manuellement',
         'Ajouter un préfixe',
@@ -428,6 +428,7 @@ def bulk_rename(parent, rows_override=None, folder=None):
         'Remplacer du texte',
         'Numéroter',
         'À partir des métadonnées',
+        'Majuscule au début des mots',
     ]
     mode = Gtk.DropDown.new_from_strings([tr(s) for s in labels])
     mode.set_selected(1)
@@ -508,7 +509,7 @@ def bulk_rename(parent, rows_override=None, folder=None):
             record.values['name'] = name
             record.revision += 1
         updating[0] = False
-        first.set_visible(True)
+        first.set_visible(modes[selected] != 'title')
         second.set_visible(selected == 3)
         number_box.set_visible(selected == 4)
         validate()

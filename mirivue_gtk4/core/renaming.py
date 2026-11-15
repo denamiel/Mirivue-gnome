@@ -3,6 +3,7 @@
 from ..i18n import tr, trf
 
 import os
+import re
 import shlex
 import shutil
 import stat
@@ -39,6 +40,13 @@ def batch_names(rows, mode, first='', second='', start=1, digits=3):
                 str(first).strip() + ' ' + str(int(start) + offset).zfill(int(digits))
                 if str(first).strip()
                 else stem
+            )
+        elif mode == 'title':
+            candidate = re.sub(
+                r'(^|[\s_-]+)([^\W\d_])',
+                lambda match: match.group(1) + match.group(2).upper(),
+                stem.lower(),
+                flags=re.UNICODE,
             )
         else:
             candidate = original
