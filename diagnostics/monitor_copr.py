@@ -89,6 +89,8 @@ def diagnosed_until(condition, seconds=6):
                           state=state_snapshot())
         timeouts.append(checkpoint)
         record("deadline_6s", **checkpoint)
+        for event in list(events)[-100:]:
+            print("DIAGNOSTIC_CHECKPOINT_TRACE " + json.dumps(event, default=str), flush=True)
         # Preserve the original suite's assertion. Only isolated trials extend.
         if not extended or seconds != 6:
             raise
@@ -218,7 +220,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
     parser.add_argument("--trials", type=int, default=10)
-    parser.add_argument("--case", choices=("suite", "plain", "traced"))
+    parser.add_argument("--case", choices=("suite", "plain", "traced", "suite-plain", "suite-traced"))
     parser.add_argument("--label")
     args = parser.parse_args()
     output = Path(args.output)
@@ -226,13 +228,13 @@ def main():
     support.until = diagnosed_until
     if args.case:
         extended = args.case != "suite"
-        patches = instrument() if args.case == "traced" else []
+        patches = instrument() if args.case in ("traced", "suite-traced") else []
         for p in patches:
             p.start()
         try:
-            suite = (unittest.defaultTestLoader.discover("tests") if args.case == "suite"
+            suite = (unittest.defaultTestLoader.discover("tests") if args.case in ("suite", "suite-plain", "suite-traced")
                      else unittest.TestSuite([behaviors.NativeFileBehaviorsTests(TARGET)]))
-            run_suite(suite, output, args.label, args.case == "traced")
+            run_suite(suite, output, args.label, args.case in ("traced", "suite-traced"))
         finally:
             for p in reversed(patches):
                 p.stop()
@@ -243,6 +245,8 @@ def main():
     cases = [("suite", "suite-original")]
     cases += [(mode, f"focused-{mode}-{n:02d}")
               for mode in ("plain", "traced") for n in range(args.trials)]
+    cases += [(mode, f"{mode}-{n:02d}")
+              for mode in ("suite-plain", "suite-traced") for n in range(5)]
     summaries = []
     for mode, label in cases:
         process = subprocess.run(
