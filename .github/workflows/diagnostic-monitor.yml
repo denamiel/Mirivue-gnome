@@ -34,9 +34,9 @@ jobs:
           dnf -y builddep packaging/fedora/mirivue-gnome.spec
           useradd --create-home diagnostic
           mkdir -p diagnostic-results
-          chown -R diagnostic:diagnostic "$GITHUB_WORKSPACE"
           rpm -q python3 python3-gobject glib2 gtk4 libadwaita > diagnostic-results/environment.txt
           git rev-parse HEAD >> diagnostic-results/environment.txt
+          chown -R diagnostic:diagnostic "$GITHUB_WORKSPACE"
       - name: Reproduire la suite puis comparer les attentes 6 et 30 secondes
         run: |
           runuser -u diagnostic -- bash -euo pipefail -c '
