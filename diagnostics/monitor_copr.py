@@ -10,6 +10,7 @@ from collections import deque
 import json
 from pathlib import Path
 import sys
+import subprocess
 import threading
 import time
 import traceback
@@ -217,28 +218,43 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
     parser.add_argument("--trials", type=int, default=10)
+    parser.add_argument("--case", choices=("suite", "plain", "traced"))
+    parser.add_argument("--label")
     args = parser.parse_args()
     output = Path(args.output)
     output.mkdir(parents=True, exist_ok=True)
     support.until = diagnosed_until
-    # Keep original application code and original timeout for the complete suite.
-    run_suite(unittest.defaultTestLoader.discover("tests"), output, "suite-original", False)
-    extended = True
-    for tracing in (False, True):
-        patches = instrument() if tracing else []
+    if args.case:
+        extended = args.case != "suite"
+        patches = instrument() if args.case == "traced" else []
         for p in patches:
             p.start()
         try:
-            for number in range(args.trials):
-                suite = unittest.TestSuite([behaviors.NativeFileBehaviorsTests(TARGET)])
-                run_suite(suite, output,
-                          f"focused-{'traced' if tracing else 'plain'}-{number:02d}", tracing)
+            suite = (unittest.defaultTestLoader.discover("tests") if args.case == "suite"
+                     else unittest.TestSuite([behaviors.NativeFileBehaviorsTests(TARGET)]))
+            run_suite(suite, output, args.label, args.case == "traced")
         finally:
             for p in reversed(patches):
                 p.stop()
-    output.joinpath("summary.json").write_text(json.dumps(outcomes, indent=2, default=str))
-    # A recovered update after 6s still counts as a diagnostic finding, not a pass.
-    findings = any(not item["ok"] or item["checkpoints"] for item in outcomes)
+        return 1 if any(not item["ok"] or item["checkpoints"] for item in outcomes) else 0
+
+    # Each process owns a fresh Gtk.Application registration. Reusing a class
+    # across separate unittest runners leaves its D-Bus object exported.
+    cases = [("suite", "suite-original")]
+    cases += [(mode, f"focused-{mode}-{n:02d}")
+              for mode in ("plain", "traced") for n in range(args.trials)]
+    summaries = []
+    for mode, label in cases:
+        process = subprocess.run(
+            [sys.executable, __file__, "--output", str(output), "--case", mode,
+             "--label", label], timeout=180)
+        report = output / (label + ".json")
+        if not report.exists():
+            raise RuntimeError(f"Diagnostic process {label} exited {process.returncode} without a report")
+        summary = json.loads(report.read_text())["summary"]
+        summaries.append(summary)
+    output.joinpath("summary.json").write_text(json.dumps(summaries, indent=2, default=str))
+    findings = any(not item["ok"] or item["checkpoints"] for item in summaries)
     print("DIAGNOSTIC_FINDINGS=" + str(findings).lower(), flush=True)
     return 1 if findings else 0
 
