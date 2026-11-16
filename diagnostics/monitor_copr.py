@@ -12,6 +12,7 @@ from pathlib import Path
 import sys
 import subprocess
 import threading
+import tempfile
 import time
 import traceback
 import unittest
@@ -33,6 +34,7 @@ active_case = None
 extended = False
 timeouts = []
 outcomes = []
+trace_target = False
 
 
 def record(kind, **data):
@@ -102,6 +104,7 @@ def diagnosed_until(condition, seconds=6):
         except AssertionError:
             record("deadline_30s", origin=origin,
                    elapsed=time.monotonic() - begin, state=state_snapshot())
+            print("DIAGNOSTIC_FINAL_WAIT " + json.dumps(events[-1], default=str), flush=True)
             raise
 
 
@@ -183,11 +186,16 @@ class Result(unittest.TextTestResult):
     def startTest(self, test):
         global active_case
         active_case = test
+        self.patches = instrument() if trace_target and test.id().endswith("." + TARGET) else []
+        for p in self.patches:
+            p.start()
         record("test_start", test=test.id())
         super().startTest(test)
 
     def stopTest(self, test):
         record("test_stop", test=test.id())
+        for p in reversed(self.patches):
+            p.stop()
         super().stopTest(test)
 
 
@@ -215,8 +223,40 @@ def run_suite(suite, output, label, tracing):
     return result
 
 
+def controlled_cache_race(output):
+    """Force a rewrite between State.put's guard and its signature read."""
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        state = State(root / "state")
+        path = root / "external.txt"
+        path.write_bytes(b"")
+        row = metadata.basic_entry(path)
+        original_signature = state.signature
+        changed = False
+
+        def rewrite_then_sign(target):
+            nonlocal changed
+            if Path(target) == path and not changed:
+                changed = True
+                path.write_bytes(b"updated outside Mirivue")
+            return original_signature(target)
+
+        with patch.object(state, "signature", side_effect=rewrite_then_sign):
+            stored = state.put(row)
+        cached = state.read(path)
+        finding = dict(
+            rewrite_injected=changed, put_result=stored, disk_size=path.stat().st_size,
+            cached_size=cached.sort_values[1] if cached else None,
+            cached_signature=cached.file_signature if cached else None,
+            disk_signature=metadata.fingerprint(path),
+            stale_cache_accepted=cached is not None and cached.sort_values[1] != path.stat().st_size)
+        output.joinpath("cache-race.json").write_text(json.dumps(finding, indent=2))
+        print("CACHE_RACE_RESULT " + json.dumps(finding), flush=True)
+        return finding["stale_cache_accepted"]
+
+
 def main():
-    global extended
+    global extended, trace_target
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", required=True)
     parser.add_argument("--trials", type=int, default=10)
@@ -228,25 +268,23 @@ def main():
     support.until = diagnosed_until
     if args.case:
         extended = args.case != "suite"
-        patches = instrument() if args.case in ("traced", "suite-traced") else []
-        for p in patches:
-            p.start()
+        trace_target = args.case in ("traced", "suite-traced")
         try:
             suite = (unittest.defaultTestLoader.discover("tests") if args.case in ("suite", "suite-plain", "suite-traced")
                      else unittest.TestSuite([behaviors.NativeFileBehaviorsTests(TARGET)]))
             run_suite(suite, output, args.label, args.case in ("traced", "suite-traced"))
         finally:
-            for p in reversed(patches):
-                p.stop()
+            trace_target = False
         return 1 if any(not item["ok"] or item["checkpoints"] for item in outcomes) else 0
 
     # Each process owns a fresh Gtk.Application registration. Reusing a class
     # across separate unittest runners leaves its D-Bus object exported.
+    cache_finding = controlled_cache_race(output)
     cases = [("suite", "suite-original")]
     cases += [(mode, f"focused-{mode}-{n:02d}")
               for mode in ("plain", "traced") for n in range(args.trials)]
     cases += [(mode, f"{mode}-{n:02d}")
-              for mode in ("suite-plain", "suite-traced") for n in range(5)]
+              for mode in ("suite-plain", "suite-traced") for n in range(2)]
     summaries = []
     for mode, label in cases:
         process = subprocess.run(
@@ -258,7 +296,7 @@ def main():
         summary = json.loads(report.read_text())["summary"]
         summaries.append(summary)
     output.joinpath("summary.json").write_text(json.dumps(summaries, indent=2, default=str))
-    findings = any(not item["ok"] or item["checkpoints"] for item in summaries)
+    findings = cache_finding or any(not item["ok"] or item["checkpoints"] for item in summaries)
     print("DIAGNOSTIC_FINDINGS=" + str(findings).lower(), flush=True)
     return 1 if findings else 0
 
