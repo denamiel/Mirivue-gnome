@@ -1,0 +1,59 @@
+name: Diagnostic surveillance GNOME
+on:
+  push:
+    branches: ['diagnostic/copr-11330722-monitor']
+    paths:
+      - 'diagnostics/monitor_copr.py'
+      - '.github/workflows/diagnostic-monitor.yml'
+permissions:
+  contents: read
+jobs:
+  monitor:
+    name: Diagnostic Fedora ${{ matrix.fedora }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        fedora: ['44', '45']
+    container: fedora:${{ matrix.fedora }}
+    env:
+      GSK_RENDERER: cairo
+      LANGUAGE: fr
+      LC_ALL: C.UTF-8
+      PYTHONFAULTHANDLER: '1'
+    steps:
+      - name: Installer les dépendances de diagnostic
+        run: |
+          dnf -y install git rpm-build python3 dnf5-plugins
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Préparer GTK et un utilisateur sans privilèges
+        run: |
+          dnf -y builddep packaging/fedora/mirivue-gnome.spec
+          useradd --create-home diagnostic
+          mkdir -p diagnostic-results
+          rpm -q python3 python3-gobject glib2 gtk4 libadwaita > diagnostic-results/environment.txt
+          printf '%s\\n' "$GITHUB_SHA" >> diagnostic-results/environment.txt
+          chown -R diagnostic:diagnostic "$GITHUB_WORKSPACE"
+      - name: Reproduire la suite puis comparer les attentes 6 et 30 secondes
+        run: |
+          runuser -u diagnostic -- bash -euo pipefail -c '
+            isolated=$(mktemp -d)
+            trap '\''rm -rf -- "$isolated"'\'' EXIT
+            export XDG_CONFIG_HOME="$isolated/config"
+            export XDG_STATE_HOME="$isolated/state"
+            export XDG_CACHE_HOME="$isolated/cache"
+            export XDG_DATA_HOME="$isolated/data"
+            mkdir -p "$XDG_CONFIG_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME" "$XDG_DATA_HOME"
+            xvfb-run -a dbus-run-session -- timeout 18m python3 diagnostics/monitor_copr.py --trials 10 --output diagnostic-results
+          '
+      - name: Conserver les traces et le bilan
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostic-monitor-fedora-${{ matrix.fedora }}
+          path: diagnostic-results/
+          retention-days: 7
+          if-no-files-found: error
