@@ -67,15 +67,22 @@ class Gnome:
         volume = self.wait_for_event(find_volume)
         with tempfile.TemporaryDirectory() as state:
             window = self.desktop_window(Path(state))
+            notifications = []
+            window.notify = notifications.append
             try:
-                mount = self.wait_for_event(volume.get_mount)
-                window.unmount_volume(mount)
+                # The filesystem fixture was mounted by root for the trash test.
+                # Let Mirivue mount it through GIO before testing user unmount.
+                subprocess.run(["sudo", "-n", "umount", str(mountpoint)], check=True, timeout=15)
                 self.wait_for_event(lambda: volume.get_mount() is None)
                 window.mount_volume(volume)
                 mount = self.wait_for_event(volume.get_mount)
-                self.wait_for_event(lambda: window.active.folder == Path(mount.get_root().get_path()))
+                root = Path(mount.get_root().get_path())
+                self.wait_for_event(lambda: window.active.folder == root)
+                window.open_gio_location(self.gio.File.new_for_path(str(Path.home())))
                 window.unmount_volume(mount, mount.can_eject())
                 self.wait_for_event(lambda: volume.get_mount() is None)
+            except AssertionError as exc:
+                raise AssertionError(f"Montage ou démontage incomplet : {notifications}") from exc
             finally:
                 window.shutdown()
 
