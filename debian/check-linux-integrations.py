@@ -6,6 +6,7 @@ import tempfile
 import time
 import traceback
 from pathlib import Path
+from types import SimpleNamespace
 
 from PIL import Image
 
@@ -31,6 +32,53 @@ class Gnome:
         Gtk.init()
         self.gio = Gio
         self.glib = GLib
+
+    def wait_for_event(self, ready):
+        context = self.glib.MainContext.default()
+
+        def probe():
+            while context.pending():
+                context.iteration(False)
+            return ready()
+
+        return wait_for(probe)
+
+    def desktop_window(self, directory):
+        from gi.repository import Adw
+        from mirivue_gtk4.app import MirivueWindow
+        from mirivue_gtk4.backend import State
+
+        app = Adw.Application(application_id="org.pdenams.Mirivue.validation",
+                              flags=self.gio.ApplicationFlags.NON_UNIQUE)
+        app.register(None)
+        window = MirivueWindow(app, state=State(directory), restore_session=False)
+        window.present()
+        return window
+
+    def check_removable_volume(self):
+        mountpoint = Path("/media/validation/MIRIVUE_EXT4")
+        monitor = self.gio.VolumeMonitor.get()
+
+        def find_volume():
+            return next((volume for volume in monitor.get_volumes()
+                         if volume.get_name() == "MIRIVUE_EXT4"
+                         or (volume.get_mount() is not None
+                             and volume.get_mount().get_root().get_path() == str(mountpoint))), None)
+
+        volume = self.wait_for_event(find_volume)
+        with tempfile.TemporaryDirectory() as state:
+            window = self.desktop_window(Path(state))
+            try:
+                mount = self.wait_for_event(volume.get_mount)
+                window.unmount_volume(mount)
+                self.wait_for_event(lambda: volume.get_mount() is None)
+                window.mount_volume(volume)
+                mount = self.wait_for_event(volume.get_mount)
+                self.wait_for_event(lambda: window.active.folder == Path(mount.get_root().get_path()))
+                window.unmount_volume(mount, mount.can_eject())
+                self.wait_for_event(lambda: volume.get_mount() is None)
+            finally:
+                window.shutdown()
 
     def trash_roundtrip(self, file):
         from mirivue_gtk4.core import trash
@@ -86,8 +134,27 @@ class Gnome:
 
         assert render_pdf_page(directory / "test.pdf", 0, directory / "page.png") == 1
         assert Image.open(directory / "page.png").width > 0
-        for name in ("test.wav", "test.mp4"):
-            assert inspect_media(directory / name).media_technical, name
+        with tempfile.TemporaryDirectory() as state:
+            window = self.desktop_window(Path(state))
+            try:
+                for name in ("test.wav", "test.webm"):
+                    path = directory / name
+                    row = inspect_media(path)
+                    assert row.media_technical, name
+                    window.preview.show_items([SimpleNamespace(path=path, row=row, thumbnail="")])
+                    window.preview.toggle()
+                    stream = window.preview.stream
+
+                    def started():
+                        error = stream.get_error()
+                        assert error is None, error
+                        return stream.get_timestamp() > 150_000
+
+                    self.wait_for_event(started)
+                    window.preview.toggle()
+                    self.wait_for_event(lambda: not stream.get_playing())
+            finally:
+                window.shutdown()
 
 
 class Kde:
@@ -146,6 +213,14 @@ def run(backend):
             traceback.print_exc()
             failures.append(label)
 
+    if isinstance(backend, Gnome):
+        try:
+            backend.check_removable_volume()
+            print("Montage et démontage du volume USB depuis Mirivue vérifiés", flush=True)
+        except Exception:
+            traceback.print_exc()
+            failures.append("montage USB")
+
     local_sftp = f"sftp://validation@127.0.0.1{Path.home()}/validation-ssh/"
     for url, expected in (("smb://127.0.0.1/mirivue/", b"smb-fixture\n"), (local_sftp, b"sftp-fixture\n")):
         protocol = url.split(":", 1)[0]
@@ -166,14 +241,14 @@ def run(backend):
                 image.save(directory / "test.pdf")
             ffmpeg = shutil.which("ffmpeg")
             assert ffmpeg
-            for source, output in (("sine=frequency=440", "test.wav"), ("color=c=blue:s=80x80:r=10", "test.mp4")):
+            for source, output in (("sine=frequency=440", "test.wav"), ("color=c=blue:s=80x80:r=10", "test.webm")):
                 subprocess.run(
                     [ffmpeg, "-nostdin", "-v", "error", "-f", "lavfi", "-i", source,
-                     "-t", "1", str(directory / output)],
+                     "-t", "3", str(directory / output)],
                     check=True, timeout=30,
                 )
             backend.check_media(directory)
-        print("Rendu PDF et analyse audio et vidéo vérifiés", flush=True)
+        print("Rendu PDF, lecture et pause des fichiers audio et vidéo vérifiés", flush=True)
     except Exception:
         traceback.print_exc()
         failures.append("médias")
