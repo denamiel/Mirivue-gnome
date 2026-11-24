@@ -6,6 +6,10 @@ export LC_ALL=C.UTF-8
 export DEBIAN_FRONTEND=noninteractive
 cd "$HOME/source"
 . /etc/os-release
+# Keep SSH and the graphical session alive throughout package installation.
+if [[ -d /etc/needrestart/conf.d ]]; then
+  printf '%s\n' '$nrconf{restart} = "l";' | sudo tee /etc/needrestart/conf.d/99-mirivue-validation.conf >/dev/null
+fi
 sudo env DEBIAN_FRONTEND=noninteractive apt-get update
 sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential devscripts equivs libgtk-3-bin \
   dbus-user-session udisks2 python3-pyatspi fonts-dejavu-core pipewire-audio
@@ -83,6 +87,7 @@ pkg=$1
 cd "$HOME"
 desktop=$2
 if [[ "$pkg" == mirivue-gnome ]]; then
+  export LANGUAGE=fr LC_ALL=C.UTF-8
   gsettings set org.gnome.desktop.interface toolkit-accessibility true
   gsettings set org.gnome.desktop.session idle-delay 0
 else
