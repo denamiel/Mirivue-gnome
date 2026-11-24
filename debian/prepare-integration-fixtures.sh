@@ -5,9 +5,12 @@ for fs in EXT4 NTFS; do
   dir="/media/validation/MIRIVUE_$fs"
   sudo install -d "$dir"
   disk="/dev/disk/by-label/MIRIVUE_$fs"
-  if findmnt --mountpoint "$dir" >/dev/null; then
+  mounted_at=$(findmnt --noheadings --output TARGET --source "$(readlink -f "$disk")" || true)
+  if [[ "$mounted_at" == "$dir" ]]; then
+    if [[ "$fs" == EXT4 ]]; then sudo chown "$(id -u):$(id -g)" "$dir"; fi
     continue
   fi
+  if [[ -n "$mounted_at" ]]; then sudo umount "$disk"; fi
   if [[ "$fs" == NTFS ]]; then
     sudo mount -t ntfs-3g -o "uid=$(id -u),gid=$(id -g),umask=022" "$disk" "$dir"
   else
