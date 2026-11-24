@@ -37,6 +37,11 @@ case "$edition" in
     ;;
   *) exit 2 ;;
 esac
+# The SSH login started the user manager before dbus-user-session was installed.
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+env -u DBUS_SESSION_BUS_ADDRESS systemctl --user daemon-reload
+env -u DBUS_SESSION_BUS_ADDRESS systemctl --user start dbus.socket
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 sudo systemctl restart "$manager"
 sudo mk-build-deps --install --remove --tool 'apt-get -y --no-install-recommends' debian/control
 dpkg-buildpackage --build=binary --no-sign
@@ -44,8 +49,6 @@ sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y ../"$pkg"_*.deb
 dpkg-query -W "$pkg"
 "$pkg" --version
 
-export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 # The SSH login also has a session. Select only the graphical session on seat0.
 session=
 display_ready=false
