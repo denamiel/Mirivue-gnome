@@ -36,7 +36,9 @@ ssh_pwauth: false
 EOF
 cloud-localds seed.img user-data
 truncate -s 512M test-usb.img
-mkfs.ext4 -q -F -L MIRIVUE_USB test-usb.img
+mkfs.ext4 -q -F -L MIRIVUE_EXT4 test-usb.img
+truncate -s 512M test-ntfs.img
+mkfs.ntfs --fast --force --label MIRIVUE_NTFS test-ntfs.img
 accel=tcg
 cpu=max
 if [[ -r /dev/kvm && -w /dev/kvm ]]; then
@@ -47,7 +49,8 @@ qemu-system-x86_64 -machine "q35,accel=$accel" -cpu "$cpu" -m 6144 -smp 4 \
   -drive file=system.img,if=virtio,format=qcow2 \
   -drive file=seed.img,format=raw,media=cdrom \
   -drive if=none,id=usb,format=raw,file=test-usb.img \
-  -device qemu-xhci -device usb-storage,drive=usb,removable=on \
+  -drive if=none,id=usb_ntfs,format=raw,file=test-ntfs.img \
+  -device qemu-xhci -device usb-storage,drive=usb,removable=on -device usb-storage,drive=usb_ntfs,removable=on \
   -nic user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:2222-:22 \
   -vga virtio -display none -qmp unix:qmp.sock,server=on,wait=off \
   -serial "file:$out/console-serie.log" -daemonize -pidfile qemu.pid

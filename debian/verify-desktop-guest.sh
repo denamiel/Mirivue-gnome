@@ -6,17 +6,17 @@ export LC_ALL=C.UTF-8
 export DEBIAN_FRONTEND=noninteractive
 cd "$HOME/source"
 . /etc/os-release
-sudo apt-get update
-sudo apt-get install -y --no-install-recommends build-essential devscripts equivs libgtk-3-bin \
+sudo env DEBIAN_FRONTEND=noninteractive apt-get update
+sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential devscripts equivs libgtk-3-bin \
   dbus-user-session udisks2 python3-pyatspi fonts-dejavu-core pipewire-audio
 case "$edition" in
   gnome)
     desktop=org.pdenams.Mirivue.Gtk4
     manager=gdm3
     if [[ "$ID" == ubuntu ]]; then
-      sudo apt-get install -y --no-install-recommends ubuntu-desktop-minimal gdm3 gnome-session
+      sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ubuntu-desktop-minimal gdm3 gnome-session
     else
-      sudo apt-get install -y --no-install-recommends gdm3 gnome-session gnome-shell nautilus
+      sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gdm3 gnome-session gnome-shell nautilus
     fi
     for config in /etc/gdm3/custom.conf /etc/gdm3/daemon.conf; do
       if [[ -f "$config" ]]; then
@@ -27,7 +27,7 @@ case "$edition" in
   kde)
     desktop=org.pdenams.Mirivue.Qt
     manager=sddm
-    sudo apt-get install -y --no-install-recommends kubuntu-desktop plasma-workspace kwin-wayland sddm dolphin
+    sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends kubuntu-desktop plasma-workspace kwin-wayland sddm dolphin
     sudo install -d /etc/sddm.conf.d
     printf '[Autologin]\nUser=validation\nSession=plasma.desktop\n' | sudo tee /etc/sddm.conf.d/99-validation.conf
     ;;
@@ -36,7 +36,7 @@ esac
 sudo systemctl restart "$manager"
 sudo mk-build-deps --install --remove --tool 'apt-get -y --no-install-recommends' debian/control
 dpkg-buildpackage --build=binary --no-sign
-sudo apt-get install -y ../"$pkg"_*.deb
+sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y ../"$pkg"_*.deb
 dpkg-query -W "$pkg"
 "$pkg" --version
 
@@ -56,8 +56,7 @@ for ((attempt=0; attempt<120; attempt++)); do
 done
 test -n "$session"
 loginctl show-session "$session" -p Type -p Desktop -p Active
-test -b /dev/disk/by-label/MIRIVUE_USB
-lsblk -o NAME,FSTYPE,LABEL,TRAN,MOUNTPOINTS
+bash debian/prepare-integration-fixtures.sh
 systemd-run --user --wait --pipe --collect bash -s -- "$pkg" "$desktop" <<'SESSION'
 set -euo pipefail
 pkg=$1
@@ -98,4 +97,8 @@ else
   timeout 240 /usr/bin/python3 -m unittest discover -s "$HOME/source/tests" -p "test_native_kio_transfers_integration.py" -v
   unset PYTHONPATH
 fi
+if [[ "$pkg" == mirivue-kde ]]; then
+  export PYTHONPATH=/usr/lib/mirivue-kde
+fi
+timeout 240 /usr/bin/python3 "$HOME/source/debian/check-linux-integrations.py" "$pkg"
 SESSION

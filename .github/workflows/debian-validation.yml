@@ -53,7 +53,7 @@ jobs:
       - name: Préparer l’environnement QEMU
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils cloud-image-utils imagemagick acl
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils cloud-image-utils imagemagick acl ntfs-3g
           if test -c /dev/kvm; then sudo setfacl -m "u:$(id -un):rw" /dev/kvm; fi
       - name: Lancer et observer le bureau
         env:
