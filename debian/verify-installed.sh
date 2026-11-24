@@ -5,7 +5,7 @@ exec > >(tee "$report/installation.log") 2>&1
 dpkg-query -W mirivue-gnome
 mirivue-gnome --version
 GSK_RENDERER=cairo mirivue-gnome --window-smoke-test
-export GSK_RENDERER=cairo
+export GSK_RENDERER=cairo LANGUAGE=fr LC_ALL=C.UTF-8
 gtk-launch org.pdenams.Mirivue.Gtk4
 timeout 40 xdotool search --sync --onlyvisible --name 'Mirivue'
 import -window root "$report/fenetre.png"
