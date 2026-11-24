@@ -1,0 +1,4 @@
+#!/usr/bin/python3
+from mirivue_gtk4.launcher import main
+
+main()
