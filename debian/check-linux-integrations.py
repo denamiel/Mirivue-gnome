@@ -27,9 +27,12 @@ class Gnome:
 
         gi.require_version("Gtk", "4.0")
         gi.require_version("Adw", "1")
-        from gi.repository import Gio, GLib, Gtk
+        from gi.repository import Adw, Gio, GLib, Gtk
 
         Gtk.init()
+        self.application = Adw.Application(application_id="org.pdenams.Mirivue.validation",
+                                           flags=Gio.ApplicationFlags.NON_UNIQUE)
+        self.application.register(None)
         self.gio = Gio
         self.glib = GLib
 
@@ -44,14 +47,10 @@ class Gnome:
         return wait_for(probe)
 
     def desktop_window(self, directory):
-        from gi.repository import Adw
         from mirivue_gtk4.app import MirivueWindow
         from mirivue_gtk4.backend import State
 
-        app = Adw.Application(application_id="org.pdenams.Mirivue.validation",
-                              flags=self.gio.ApplicationFlags.NON_UNIQUE)
-        app.register(None)
-        window = MirivueWindow(app, state=State(directory), restore_session=False)
+        window = MirivueWindow(self.application, state=State(directory), restore_session=False)
         window.present()
         return window
 
