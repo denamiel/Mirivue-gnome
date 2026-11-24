@@ -45,21 +45,22 @@ if [[ -r /dev/kvm && -w /dev/kvm ]]; then
 fi
 qemu-system-x86_64 -machine "q35,accel=$accel" -cpu "$cpu" -m 6144 -smp 4 \
   -drive file=system.img,if=virtio,format=qcow2 \
-  -drive file=seed.img,format=raw,readonly=on \
+  -drive file=seed.img,format=raw,media=cdrom \
   -drive if=none,id=usb,format=raw,file=test-usb.img \
-  -device qemu-xhci -device usb-storage,drive=usb \
+  -device qemu-xhci -device usb-storage,drive=usb,removable=on \
   -nic user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:2222-:22 \
   -vga virtio -display none -qmp unix:qmp.sock,server=on,wait=off \
   -serial "file:$out/console-serie.log" -daemonize -pidfile qemu.pid
 vm=(ssh -i key -p 2222 -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=5
     -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$work/known_hosts" validation@127.0.0.1)
+printf 'Machine QEMU démarrée (%s), attente de SSH.\n' "$accel"
 ready=false
 for ((attempt=0; attempt<100; attempt++)); do
   if "${vm[@]}" true 2>/dev/null; then ready=true; break; fi
   sleep 5
 done
-[[ "$ready" == true ]]
-"${vm[@]}" sudo cloud-init status --wait
+if [[ "$ready" != true ]]; then tail -n 80 "$out/console-serie.log"; exit 1; fi
+timeout 300 "${vm[@]}" sudo cloud-init status --wait
 git -C "$repo" archive HEAD | "${vm[@]}" 'mkdir -p ~/source && tar -x -C ~/source'
 set +e
 "${vm[@]}" "bash ~/source/debian/verify-desktop-guest.sh '$edition'" 2>&1 | tee "$out/session.log"

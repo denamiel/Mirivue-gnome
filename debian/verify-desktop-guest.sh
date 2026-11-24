@@ -5,6 +5,7 @@ pkg=mirivue-$edition
 export LC_ALL=C.UTF-8
 export DEBIAN_FRONTEND=noninteractive
 cd "$HOME/source"
+. /etc/os-release
 sudo apt-get update
 sudo apt-get install -y --no-install-recommends build-essential devscripts equivs libgtk-3-bin \
   dbus-user-session udisks2 python3-pyatspi fonts-dejavu-core pipewire-audio
@@ -12,7 +13,11 @@ case "$edition" in
   gnome)
     desktop=org.pdenams.Mirivue.Gtk4
     manager=gdm3
-    sudo apt-get install -y gdm3 gnome-session gnome-shell nautilus
+    if [[ "$ID" == ubuntu ]]; then
+      sudo apt-get install -y --no-install-recommends ubuntu-desktop-minimal gdm3 gnome-session
+    else
+      sudo apt-get install -y --no-install-recommends gdm3 gnome-session gnome-shell nautilus
+    fi
     for config in /etc/gdm3/custom.conf /etc/gdm3/daemon.conf; do
       if [[ -f "$config" ]]; then
         sudo sed -i '/^\[daemon\]/a AutomaticLoginEnable=true\nAutomaticLogin=validation' "$config"
@@ -22,7 +27,7 @@ case "$edition" in
   kde)
     desktop=org.pdenams.Mirivue.Qt
     manager=sddm
-    sudo apt-get install -y plasma-desktop plasma-workspace kwin-wayland sddm dolphin
+    sudo apt-get install -y --no-install-recommends kubuntu-desktop plasma-workspace kwin-wayland sddm dolphin
     sudo install -d /etc/sddm.conf.d
     printf '[Autologin]\nUser=validation\nSession=plasma.desktop\n' | sudo tee /etc/sddm.conf.d/99-validation.conf
     ;;
@@ -61,15 +66,8 @@ desktop=$2
 if [[ "$pkg" == mirivue-gnome ]]; then
   gsettings set org.gnome.desktop.interface toolkit-accessibility true
   gsettings set org.gnome.desktop.session idle-delay 0
-  timeout 60 "$pkg" --window-smoke-test
-  timeout 240 /usr/bin/python3 -m unittest discover -s "$HOME/source/tests" -p "test_native_file_behaviors.py" -v
 else
   export QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1
-  timeout 90 "$pkg" --native-places-contract
-  timeout 90 "$pkg" --ui-contract
-  export PYTHONPATH=/usr/lib/mirivue-kde
-  timeout 240 /usr/bin/python3 -m unittest discover -s "$HOME/source/tests" -p "test_native_kio_transfers_integration.py" -v
-  unset PYTHONPATH
 fi
 gtk-launch "$desktop"
 timeout 45 /usr/bin/python3 - <<'CHECK'
@@ -90,4 +88,14 @@ for _ in range(40):
     time.sleep(1)
 raise SystemExit("Fenêtre Mirivue introuvable dans l’arbre d’accessibilité.")
 CHECK
+if [[ "$pkg" == mirivue-gnome ]]; then
+  timeout 60 "$pkg" --window-smoke-test
+  timeout 240 /usr/bin/python3 -m unittest discover -s "$HOME/source/tests" -p "test_native_file_behaviors.py" -v
+else
+  timeout 90 "$pkg" --native-places-contract
+  timeout 90 "$pkg" --ui-contract
+  export PYTHONPATH=/usr/lib/mirivue-kde
+  timeout 240 /usr/bin/python3 -m unittest discover -s "$HOME/source/tests" -p "test_native_kio_transfers_integration.py" -v
+  unset PYTHONPATH
+fi
 SESSION
