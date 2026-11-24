@@ -6,7 +6,6 @@ import tempfile
 import time
 import traceback
 from pathlib import Path
-from types import SimpleNamespace
 
 from PIL import Image
 
@@ -143,22 +142,28 @@ class Gnome:
         with tempfile.TemporaryDirectory() as state:
             window = self.desktop_window(Path(state))
             try:
+                window.set_preview_enabled(True, persist=True)
+                self.wait_for_event(window.preview.get_mapped)
+                window.active.open(directory)
+                self.wait_for_event(lambda: window.active.sorted.get_n_items() >= 3)
                 for name in ("test.wav", "test.webm"):
                     path = directory / name
-                    row = inspect_media(path)
-                    assert row.media_technical, name
-                    window.preview.show_items([SimpleNamespace(path=path, row=row, thumbnail="")])
-                    window.preview.toggle()
-                    stream = window.preview.stream
+                    assert inspect_media(path).media_technical, name
+                    window.active.selection.unselect_all()
+                    window.active.select_paths([path])
+                    stream = self.wait_for_event(lambda: window.preview.stream)
 
-                    def started():
+                    def state_ready(predicate):
                         error = stream.get_error()
                         assert error is None, error
-                        return stream.get_timestamp() > 150_000
+                        return predicate()
 
-                    self.wait_for_event(started)
+                    self.wait_for_event(lambda: state_ready(stream.is_prepared))
+                    window.preview.toggle()
+                    self.wait_for_event(lambda: state_ready(lambda: stream.get_timestamp() > 150_000))
                     window.preview.toggle()
                     self.wait_for_event(lambda: not stream.get_playing())
+                    print(f"Lecture et pause vérifiées : {name}", flush=True)
             finally:
                 window.shutdown()
 
