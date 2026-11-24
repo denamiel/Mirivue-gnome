@@ -5,6 +5,9 @@ for fs in EXT4 NTFS; do
   dir="/media/validation/MIRIVUE_$fs"
   sudo install -d "$dir"
   disk="/dev/disk/by-label/MIRIVUE_$fs"
+  if findmnt --mountpoint "$dir" >/dev/null; then
+    continue
+  fi
   if [[ "$fs" == NTFS ]]; then
     sudo mount -t ntfs-3g -o "uid=$(id -u),gid=$(id -g),umask=022" "$disk" "$dir"
   else

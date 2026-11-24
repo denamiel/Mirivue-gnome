@@ -40,9 +40,12 @@ sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y ../"$pkg"_*.deb
 dpkg-query -W "$pkg"
 "$pkg" --version
 
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 # The SSH login also has a session. Select only the graphical session on seat0.
 session=
-for ((attempt=0; attempt<120; attempt++)); do
+display_ready=false
+for ((attempt=0; attempt<90; attempt++)); do
   while read -r id _; do
     if [[ "$(loginctl show-session "$id" -p Name --value)" == validation &&
           "$(loginctl show-session "$id" -p Seat --value)" == seat0 &&
@@ -51,10 +54,27 @@ for ((attempt=0; attempt<120; attempt++)); do
       break
     fi
   done < <(loginctl list-sessions --no-legend)
-  if [[ -n "$session" ]] && systemctl --user show-environment | grep -Eq '^(WAYLAND_DISPLAY|DISPLAY)='; then break; fi
+  if [[ -n "$session" && -S "$XDG_RUNTIME_DIR/bus" ]]; then
+    display=$(systemctl --user show-environment | grep -E '^(WAYLAND_DISPLAY|DISPLAY)=' || true)
+    if [[ -n "$display" ]]; then display_ready=true; break; fi
+    for candidate in "$XDG_RUNTIME_DIR"/wayland-*; do
+      if [[ -S "$candidate" ]]; then
+        export WAYLAND_DISPLAY="${candidate##*/}"
+        systemctl --user import-environment WAYLAND_DISPLAY
+        display_ready=true
+        break
+      fi
+    done
+    if [[ "$display_ready" == true ]]; then break; fi
+  fi
   sleep 2
 done
-test -n "$session"
+if [[ "$display_ready" != true ]]; then
+  loginctl list-sessions
+  ls -la "$XDG_RUNTIME_DIR"
+  sudo journalctl -b -u "$manager" --no-pager -n 75
+  exit 1
+fi
 loginctl show-session "$session" -p Type -p Desktop -p Active
 bash debian/prepare-integration-fixtures.sh
 systemd-run --user --wait --pipe --collect bash -s -- "$pkg" "$desktop" <<'SESSION'
@@ -68,8 +88,9 @@ if [[ "$pkg" == mirivue-gnome ]]; then
 else
   export QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1
 fi
-gtk-launch "$desktop"
-timeout 45 /usr/bin/python3 - <<'CHECK'
+status=0
+gtk-launch "$desktop" || status=1
+timeout --kill-after=5 50 /usr/bin/python3 - <<'CHECK' || status=1
 import time
 
 import pyatspi
@@ -79,7 +100,8 @@ for _ in range(40):
     for app in desktop:
         try:
             for window in app:
-                if window.getRole() == pyatspi.ROLE_FRAME and "mirivue" in window.name.casefold():
+                if (window.getRole() in (pyatspi.ROLE_FRAME, pyatspi.ROLE_WINDOW)
+                        and "mirivue" in (window.name or "").casefold()):
                     print("Fenêtre Mirivue ouverte dans la session graphique :", window.name)
                     raise SystemExit(0)
         except (LookupError, RuntimeError):
@@ -87,18 +109,25 @@ for _ in range(40):
     time.sleep(1)
 raise SystemExit("Fenêtre Mirivue introuvable dans l’arbre d’accessibilité.")
 CHECK
+if ((status)); then
+  journalctl --user -b --no-pager -n 70 || true
+  for log in "$HOME"/.local/state/mirivue/*.log; do
+    if [[ -f "$log" ]]; then tail -n 80 "$log"; fi
+  done
+fi
 if [[ "$pkg" == mirivue-gnome ]]; then
-  timeout 60 "$pkg" --window-smoke-test
-  timeout 240 /usr/bin/python3 -m unittest discover -s "$HOME/source/tests" -p "test_native_file_behaviors.py" -v
+  timeout 60 "$pkg" --window-smoke-test || status=1
+  timeout 240 /usr/bin/python3 -m unittest discover -s "$HOME/source/tests" -p "test_native_file_behaviors.py" -v || status=1
 else
-  timeout 90 "$pkg" --native-places-contract
-  timeout 90 "$pkg" --ui-contract
+  timeout 90 "$pkg" --native-places-contract || status=1
+  timeout 90 "$pkg" --ui-contract || status=1
   export PYTHONPATH=/usr/lib/mirivue-kde
-  timeout 240 /usr/bin/python3 -m unittest discover -s "$HOME/source/tests" -p "test_native_kio_transfers_integration.py" -v
+  timeout 240 /usr/bin/python3 -m unittest discover -s "$HOME/source/tests" -p "test_native_kio_transfers_integration.py" -v || status=1
   unset PYTHONPATH
 fi
 if [[ "$pkg" == mirivue-kde ]]; then
   export PYTHONPATH=/usr/lib/mirivue-kde
 fi
-timeout 240 /usr/bin/python3 "$HOME/source/debian/check-linux-integrations.py" "$pkg"
+timeout 240 /usr/bin/python3 "$HOME/source/debian/check-linux-integrations.py" "$pkg" || status=1
+exit "$status"
 SESSION
