@@ -56,15 +56,20 @@ lsblk -o NAME,FSTYPE,LABEL,TRAN,MOUNTPOINTS
 systemd-run --user --wait --pipe --collect bash -s -- "$pkg" "$desktop" <<'SESSION'
 set -euo pipefail
 pkg=$1
+cd "$HOME"
 desktop=$2
 if [[ "$pkg" == mirivue-gnome ]]; then
   gsettings set org.gnome.desktop.interface toolkit-accessibility true
   gsettings set org.gnome.desktop.session idle-delay 0
   timeout 60 "$pkg" --window-smoke-test
+  timeout 240 /usr/bin/python3 -m unittest discover -s "$HOME/source/tests" -p "test_native_file_behaviors.py" -v
 else
   export QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1
   timeout 90 "$pkg" --native-places-contract
   timeout 90 "$pkg" --ui-contract
+  export PYTHONPATH=/usr/lib/mirivue-kde
+  timeout 240 /usr/bin/python3 -m unittest discover -s "$HOME/source/tests" -p "test_native_kio_transfers_integration.py" -v
+  unset PYTHONPATH
 fi
 gtk-launch "$desktop"
 timeout 45 /usr/bin/python3 - <<'CHECK'

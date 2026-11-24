@@ -53,17 +53,13 @@ jobs:
       - name: Préparer l’environnement QEMU
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils cloud-image-utils imagemagick
-          if test -c /dev/kvm; then sudo chgrp kvm /dev/kvm; sudo chmod g+rw /dev/kvm; fi
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-utils cloud-image-utils imagemagick acl
+          if test -c /dev/kvm; then sudo setfacl -m "u:$(id -un):rw" /dev/kvm; fi
       - name: Lancer et observer le bureau
         env:
           VALIDATION_SYSTEM: ${{ matrix.system }}
         run: |
-          if test -c /dev/kvm; then
-            sg kvm -c 'bash debian/verify-desktop-vm.sh "$VALIDATION_SYSTEM" gnome'
-          else
-            bash debian/verify-desktop-vm.sh "$VALIDATION_SYSTEM" gnome
-          fi
+          bash debian/verify-desktop-vm.sh "$VALIDATION_SYSTEM" gnome
       - name: Conserver la capture du bureau et les journaux
         if: always()
         uses: actions/upload-artifact@v4
