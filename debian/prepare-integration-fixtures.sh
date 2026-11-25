@@ -6,13 +6,16 @@ for fs in EXT4 NTFS; do
   sudo install -d "$dir"
   disk="/dev/disk/by-label/MIRIVUE_$fs"
   mounted_at=$(findmnt --noheadings --output TARGET --source "$(readlink -f "$disk")" || true)
-  if [[ "$mounted_at" == "$dir" ]]; then
+  if [[ "$mounted_at" == "$dir" && "$fs" != NTFS ]]; then
     if [[ "$fs" == EXT4 ]]; then sudo chown "$(id -u):$(id -g)" "$dir"; fi
     continue
   fi
   if [[ -n "$mounted_at" ]]; then sudo umount "$disk"; fi
   if [[ "$fs" == NTFS ]]; then
-    sudo mount -t ntfs-3g -o "uid=$(id -u),gid=$(id -g),umask=022" "$disk" "$dir"
+    # The test NTFS volume belongs to one user. Make its trash visible to GVfs.
+    options="uid=$(id -u),gid=$(id -g),dmask=0077,fmask=0177,x-gvfs-trash"
+    printf '%s %s ntfs-3g noauto,%s 0 0\n' "$disk" "$dir" "$options" | sudo tee -a /etc/fstab >/dev/null
+    sudo mount "$dir"
   else
     sudo mount -t ext4 "$disk" "$dir"
     sudo chown "$(id -u):$(id -g)" "$dir"
