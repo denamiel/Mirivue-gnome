@@ -27,7 +27,7 @@ jobs:
           docker run --rm -i --cap-add=NET_ADMIN -e PROTOCOL -v "$PWD:/input:ro" debian:13 bash -euo pipefail -s <<'TEST'
           export DEBIAN_FRONTEND=noninteractive
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates curl build-essential devscripts equivs sudo dbus-x11 xvfb xauth samba openssh-server iptables
+          apt-get install -y --no-install-recommends ca-certificates curl build-essential devscripts equivs sudo dbus-x11 xvfb xauth samba openssh-server iptables iproute2
           mkdir -p /build
           cp -a /input/. /build/source
           cd /build/source
@@ -61,8 +61,10 @@ jobs:
             /usr/sbin/sshd -o ListenAddress=127.0.0.1 -o UsePAM=yes
             runuser -u validation -- ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new validation@127.0.0.1 true
           fi
+          tc qdisc replace dev lo root tbf rate 120mbit burst 128kb latency 100ms
+          sed -i 's/Le transfert interrompu n’a pas signalé d’erreur./Aucun échec après la coupure. Coupure déclenchée : {disconnected}/; s/raise AssertionError("Aucun échec/raise AssertionError(f"Aucun échec/' /tmp/check_linux_integrations.py
           cd /tmp
-          timeout --kill-after=8 150 runuser -u validation -- \
+          timeout --kill-after=8 250 runuser -u validation -- \
             xvfb-run -a dbus-run-session -- /usr/bin/python3 -u - "$PROTOCOL" <<'PY'
           import sys
           from pathlib import Path
