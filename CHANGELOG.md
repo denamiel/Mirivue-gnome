@@ -1,3 +1,8 @@
+## 1.0.6-beta.1 — 25 novembre 2026
+
+- Corrige l’actualisation des métadonnées quand un fichier change pendant sa mise en cache.
+- Ajoute le conditionnement `.deb` pour Debian 13 et Ubuntu 24.04 et 26.04.
+
 # Renommage — 15 novembre 2026
 
 - Ajout de « Majuscule au début des mots » au renommage en masse : normalisation préalable en minuscules, puis majuscules après les espaces, tirets et tirets bas, comme dans Mirivue KDE 1.0.1. Les extensions des fichiers sont conservées.

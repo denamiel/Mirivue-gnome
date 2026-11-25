@@ -393,14 +393,16 @@ class State:
             return None
 
     def put(self, row):
-        # Do not certify stale metadata with a newer filesystem signature.
-        if row.file_signature and tuple(row.file_signature) != fingerprint(row.path):
-            return
         try:
+            # Use the same fingerprint to validate the row and key the cache entry.
+            current = fingerprint(row.path)
+            if row.file_signature and tuple(row.file_signature) != current:
+                return
+            signature = json.dumps([CACHE_REVISION, current, media.companion_signature(row.path)])
             with self.db() as db:
                 db.execute(
                     'INSERT OR REPLACE INTO cache VALUES (?,?,?)',
-                    (str(row.path), self.signature(row.path), json.dumps(library.encode_row(row))),
+                    (str(row.path), signature, json.dumps(library.encode_row(row))),
                 )
         except (sqlite3.Error, OSError):
             return False
