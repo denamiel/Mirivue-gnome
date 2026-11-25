@@ -1,3 +1,7 @@
+## 1.0.6-rc.1 — 25 novembre 2026
+
+- Prépare la stabilisation de 1.0.6 et la validation de la mise à niveau depuis la bêta.
+
 ## 1.0.6-beta.1 — 25 novembre 2026
 
 - Corrige l’actualisation des métadonnées quand un fichier change pendant sa mise en cache.

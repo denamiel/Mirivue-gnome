@@ -1,6 +1,6 @@
 Name:           mirivue-gnome
-%global upstream_version 1.0.6-beta.1
-Version:        1.0.6~beta.1
+%global upstream_version 1.0.6-rc.1
+Version:        1.0.6~rc.1
 Release:        1%{?dist}
 Summary:        GNOME file and media manager with two panes
 License:        GPL-3.0-or-later
@@ -77,6 +77,9 @@ xvfb-run -a dbus-run-session -- bash packaging/verify.sh
 %{_datadir}/mirivue-gnome/
 
 %changelog
+* Wed Nov 25 2026 Mirivue contributors - 1.0.6~rc.1-1
+- Prepare the release candidate and exercise package upgrades.
+
 * Wed Nov 25 2026 Mirivue contributors - 1.0.6~beta.1-1
 - Keep the file metadata cache consistent during external edits.
 
