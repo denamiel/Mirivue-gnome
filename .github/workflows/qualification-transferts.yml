@@ -1,7 +1,7 @@
 name: Qualification des transferts interrompus GNOME
 on:
   push:
-    branches: [codex/qualification-transferts-gnome-1-0-6]
+    branches: [codex/qualification-transferts-gnome]
     paths:
       - '.github/workflows/qualification-transferts.yml'
       - 'debian/**'
