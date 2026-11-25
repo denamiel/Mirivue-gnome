@@ -13,6 +13,7 @@ fi
 sudo env DEBIAN_FRONTEND=noninteractive apt-get update
 sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libgtk-3-bin \
   dbus-user-session udisks2 python3-pyatspi fonts-dejavu-core pipewire-audio
+sudo apt-get install -y --no-install-recommends iptables
 case "$edition" in
   gnome)
     desktop=org.pdenams.Mirivue.Gtk4
@@ -85,7 +86,7 @@ if [[ "$display_ready" != true ]]; then
 fi
 loginctl show-session "$session" -p Type -p Desktop -p Active
 bash debian/prepare-integration-fixtures.sh
-systemd-run --user --wait --pipe --collect bash -s -- "$pkg" "$desktop" <<'SESSION'
+systemd-run --user --wait --pipe --collect --setenv=QUALIFY_NETWORK="${QUALIFY_NETWORK:-0}" bash -s -- "$pkg" "$desktop" <<'SESSION'
 set -euo pipefail
 pkg=$1
 cd "$HOME"

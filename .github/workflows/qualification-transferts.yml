@@ -1,0 +1,50 @@
+name: Qualification des transferts interrompus GNOME
+on:
+  push:
+    branches: [codex/qualification-transferts-gnome-1-0-6]
+    paths:
+      - '.github/workflows/qualification-transferts.yml'
+      - 'debian/**'
+      - 'tests/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  wayland:
+    name: "${{ matrix.system }} — série ${{ matrix.shard }}"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {system: ubuntu-26.04, shard: 1}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Télécharger le paquet publié et vérifier son empreinte
+        run: |
+          mkdir -p dist/deb
+          cd dist/deb
+          package=mirivue-gnome_1.0.6.beta.1-1_all.deb
+          curl --fail --show-error --silent --location --retry 3 -o "$package" \
+            "https://github.com/denamiel/Mirivue-gnome/releases/download/v1.0.6-beta.1/$package"
+          printf '%s  %s\n' 3527e0a816d0f0da1715bc4ae5af30a923048b3822843fa9f358439a7d044a69 "$package" > SHA256SUMS
+          sha256sum --check SHA256SUMS
+      - name: Préparer l’environnement QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 cloud-image-utils imagemagick acl ntfs-3g
+          if test -c /dev/kvm; then sudo setfacl -m "u:$(id -un):rw" /dev/kvm; fi
+      - name: Vérifier les transferts interrompus dans GNOME Wayland
+        env:
+          VALIDATION_SYSTEM: ${{ matrix.system }}
+        run: bash debian/verify-desktop-vm.sh "$VALIDATION_SYSTEM" gnome dist/deb
+      - name: Conserver les résultats d’intégrité
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qualification-${{ matrix.system }}-${{ matrix.shard }}
+          path: validation-vm/
+          if-no-files-found: ignore

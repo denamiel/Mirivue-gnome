@@ -69,7 +69,7 @@ timeout 300 "${vm[@]}" sudo cloud-init status --wait
 git -C "$repo" archive HEAD | "${vm[@]}" 'mkdir -p ~/source && tar -x -C ~/source'
 tar -C "$package_dir" -cf - . | "${vm[@]}" 'mkdir -p ~/package && tar -x -C ~/package'
 set +e
-"${vm[@]}" "bash ~/source/debian/verify-desktop-guest.sh '$edition'" 2>&1 | tee "$out/session.log"
+"${vm[@]}" "QUALIFY_NETWORK=1 bash ~/source/debian/verify-desktop-guest.sh '$edition'" 2>&1 | tee "$out/session.log"
 guest_result=${PIPESTATUS[0]}
 set -e
 python3 - "$out/fenetre.ppm" <<'PY'
