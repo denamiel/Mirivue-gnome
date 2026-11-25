@@ -3,6 +3,8 @@ set -euo pipefail
 image=$1
 edition=$2
 repetitions=${4:-1}
+network=${QUALIFY_NETWORK:-0}
+[[ "$network" =~ ^[01]$ ]]
 [[ "$repetitions" =~ ^([1-9]|[1-5][0-9]|60)$ ]]
 package_dir=$(realpath -- "$3")
 (cd "$package_dir" && sha256sum --check SHA256SUMS)
@@ -71,7 +73,7 @@ timeout 300 "${vm[@]}" sudo cloud-init status --wait
 git -C "$repo" archive HEAD | "${vm[@]}" 'mkdir -p ~/source && tar -x -C ~/source'
 tar -C "$package_dir" -cf - . | "${vm[@]}" 'mkdir -p ~/package && tar -x -C ~/package'
 set +e
-"${vm[@]}" "bash ~/source/debian/verify-desktop-guest.sh '$edition' '$repetitions'" 2>&1 | tee "$out/session.log"
+"${vm[@]}" "QUALIFY_NETWORK=$network bash ~/source/debian/verify-desktop-guest.sh '$edition' '$repetitions'" 2>&1 | tee "$out/session.log"
 guest_result=${PIPESTATUS[0]}
 set -e
 python3 - "$out/fenetre.ppm" <<'PY'

@@ -1,5 +1,7 @@
 ## 1.0.6-rc.1 — 25 novembre 2026
 
+- Préserve le fichier de destination si un remplacement GIO est interrompu avant la fin de la copie.
+
 - Prépare la stabilisation de 1.0.6 et la validation de la mise à niveau depuis la bêta.
 
 ## 1.0.6-beta.1 — 25 novembre 2026

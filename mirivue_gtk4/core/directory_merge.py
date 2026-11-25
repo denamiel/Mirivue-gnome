@@ -75,8 +75,7 @@ def merge(source, target, copy, cancelled, decide, history, confirmed=False, pro
                 # silently switch a failed trash operation to permanent delete.
                 if directory or target_directory:
                     return
-                # An interrupted overwrite may alter its target: refresh it,
-                # and do not retain a misleading undo record.
+                # Refresh both sides. There is no undo record for an overwrite.
                 changed.extend([file.get_uri(), destination.get_uri()])
                 complete_history = False
                 gio_backend.replace(file, destination, move=not copy,

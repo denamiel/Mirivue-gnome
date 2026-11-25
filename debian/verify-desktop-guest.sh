@@ -20,6 +20,9 @@ if ((repetitions > 1)); then
   sudo systemctl restart systemd-sysctl.service
   printf 'Collecteur de crash : %s\n' "$(cat /proc/sys/kernel/core_pattern)"
 fi
+if [[ "${QUALIFY_NETWORK:-0}" == 1 ]]; then
+  sudo apt-get install -y --no-install-recommends iptables
+fi
 case "$edition" in
   gnome)
     desktop=org.pdenams.Mirivue.Gtk4
@@ -94,7 +97,7 @@ loginctl show-session "$session" -p Type -p Desktop -p Active
 bash debian/prepare-integration-fixtures.sh
 diagnostic_started=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
 result=0
-systemd-run --user --wait --pipe --collect bash -s -- "$pkg" "$desktop" "$repetitions" <<'SESSION' || result=$?
+systemd-run --user --wait --pipe --collect --setenv=QUALIFY_NETWORK="${QUALIFY_NETWORK:-0}" bash -s -- "$pkg" "$desktop" "$repetitions" <<'SESSION' || result=$?
 set -euo pipefail
 pkg=$1
 cd "$HOME"

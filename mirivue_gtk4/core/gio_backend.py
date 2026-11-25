@@ -160,7 +160,10 @@ def _remove_own_tree(target):
             for _, child, _, _ in browse(target):
                 _remove_own_tree(child)
         target.delete(None)
-    except Exception:
+    except Exception as error:
+        GLib = _glib()
+        if isinstance(error, GLib.Error) and error.matches(Gio.io_error_quark(), Gio.IOErrorEnum.NOT_FOUND):
+            return
         logging.getLogger('mirivue-gtk4').warning(
             'Nettoyage incomplet de la copie temporaire %s', target.get_uri(), exc_info=True
         )
@@ -323,7 +326,7 @@ def transfer(sources, destination, move=False, cancelled=lambda: False, progress
 
 def replace(source, target, move=False, cancelled=lambda: False,
             progress=lambda done, total: None):
-    """Explicit GIO overwrite, cancellable even while no progress arrives."""
+    """Replace a file only after its staged copy is complete."""
     import threading
     Gio = _gio()
     if cancelled():
@@ -345,13 +348,33 @@ def replace(source, target, move=False, cancelled=lambda: False,
     watcher = threading.Thread(target=watch, name='gio-replace-cancel', daemon=True)
     watcher.start()
     try:
-        flags = Gio.FileCopyFlags.OVERWRITE | Gio.FileCopyFlags.NOFOLLOW_SYMLINKS
+        flags = (Gio.FileCopyFlags.OVERWRITE | Gio.FileCopyFlags.NOFOLLOW_SYMLINKS
+                 | Gio.FileCopyFlags.NO_FALLBACK_FOR_MOVE)
         if cancelled():
             operation.cancel()
         if move:
-            source.move(target, flags, operation, update, None)
-        else:
-            source.copy(target, flags, operation, update, None)
+            try:
+                source.move(target, flags, operation, update, None)
+                return
+            except _glib().Error as error:
+                if not error.matches(Gio.io_error_quark(), Gio.IOErrorEnum.NOT_SUPPORTED):
+                    raise
+        before = _tree_manifest(source, operation, with_identity=True) if move else None
+        stage = target.get_parent().get_child('.mirivue-transfer-' + uuid.uuid4().hex)
+        try:
+            _copy_tree(source, stage, operation, update)
+            if cancelled():
+                raise InterruptedError()
+            if move and _tree_manifest(source, operation, with_identity=True) != before:
+                raise IOError(tr('La source a changé pendant la copie ; elle est conservée.'))
+            stage.move(target, flags, operation, None, None)
+        except Exception:
+            _remove_own_tree(stage)
+            raise
+        if move:
+            if _tree_manifest(source, operation, with_identity=True) != before:
+                raise IOError(tr('Copie terminée ; la source a changé et a été conservée.'))
+            source.delete(operation)
     except Exception as error:
         if operation.is_cancelled():
             raise InterruptedError() from error
