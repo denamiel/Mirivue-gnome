@@ -1,0 +1,80 @@
+name: Intégrité des transferts GIO sur le candidat
+on:
+  push:
+    branches: [codex/qualification-gio-gnome]
+    paths: [.github/workflows/qualification-gio.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  network:
+    name: Coupures ${{ matrix.protocol }} dans un réseau isolé
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        protocol: [smb, sftp]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Construire et qualifier le paquet
+        env:
+          PROTOCOL: ${{ matrix.protocol }}
+        run: |
+          docker run --rm --cap-add=NET_ADMIN -e PROTOCOL -v "$PWD:/input:ro" debian:13 bash -euo pipefail -s <<'TEST'
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl build-essential devscripts equivs sudo dbus-x11 xvfb xauth samba openssh-server iptables
+          mkdir -p /build
+          cp -a /input/. /build/source
+          cd /build/source
+          mk-build-deps --install --remove --tool 'apt-get -y --no-install-recommends' debian/control
+          dpkg-buildpackage --build=binary --no-sign
+          apt-get install -y --no-install-recommends /build/mirivue-gnome_*.deb gvfs gvfs-backends
+          test "$(mirivue-gnome --version)" = 1.0.6-rc.1
+          curl --fail --silent --show-error --location --retry 3 \
+            -o /tmp/check_linux_integrations.py \
+            https://raw.githubusercontent.com/denamiel/Mirivue-gnome/e46e1f87f7939995b0b7d3949d3ab3fe5a9a94fa/debian/check-linux-integrations.py
+          useradd --create-home --shell /bin/bash validation
+          printf '%s\n' 'validation ALL=(root) NOPASSWD: /usr/sbin/iptables' > /etc/sudoers.d/validation
+          install -o validation -g validation -d /tmp/validation-smb /home/validation/validation-ssh
+          if [[ "$PROTOCOL" = smb ]]; then
+            cat > /etc/samba/smb.conf <<'SMB'
+          [global]
+          interfaces = lo
+          bind interfaces only = yes
+          map to guest = Bad User
+          [mirivue]
+          path = /tmp/validation-smb
+          guest ok = yes
+          read only = yes
+          SMB
+            smbd --daemon
+          else
+            install -d -m 0755 /run/sshd
+            runuser -u validation -- mkdir -m 0700 /home/validation/.ssh
+            runuser -u validation -- ssh-keygen -q -t ed25519 -N '' -f /home/validation/.ssh/id_ed25519
+            runuser -u validation -- cp /home/validation/.ssh/id_ed25519.pub /home/validation/.ssh/authorized_keys
+            /usr/sbin/sshd -o ListenAddress=127.0.0.1 -o UsePAM=yes
+            runuser -u validation -- ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new validation@127.0.0.1 true
+          fi
+          cd /tmp
+          timeout --kill-after=8 150 runuser -u validation -- \
+            xvfb-run -a dbus-run-session -- /usr/bin/python3 -u - "$PROTOCOL" <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, "/tmp")
+          from check_linux_integrations import Gnome
+          protocol = sys.argv[1]
+          if protocol == "smb":
+              url = "smb://127.0.0.1/mirivue/"
+              directory = Path("/tmp/validation-smb")
+          else:
+              directory = Path.home() / "validation-ssh"
+              url = f"sftp://validation@127.0.0.1{directory}/"
+          print(f"Début de la qualification {protocol}", flush=True)
+          Gnome().qualify_network(url, directory)
+          PY
+          TEST
