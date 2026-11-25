@@ -45,6 +45,7 @@ jobs:
           [global]
           interfaces = lo
           bind interfaces only = yes
+          smb ports = 445
           map to guest = Bad User
           [mirivue]
           force user = validation
@@ -86,8 +87,8 @@ jobs:
               url = f"sftp://validation@127.0.0.1{directory}/"
 
           backend = Gnome()
-          port = "445" if protocol == "smb" else "22"
-          rule = ["OUTPUT", "-o", "lo", "-p", "tcp", "--dport", port,
+          ports = "139,445" if protocol == "smb" else "22"
+          rule = ["OUTPUT", "-o", "lo", "-p", "tcp", "-m", "multiport", "--dports", ports,
                   "-j", "REJECT", "--reject-with", "tcp-reset"]
 
           def digest(path):
