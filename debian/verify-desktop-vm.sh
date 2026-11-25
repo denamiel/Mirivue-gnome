@@ -2,6 +2,8 @@
 set -euo pipefail
 image=$1
 edition=$2
+package_dir=$(realpath -- "$3")
+(cd "$package_dir" && sha256sum --check SHA256SUMS)
 repo=$PWD
 out=$repo/validation-vm
 work=$(mktemp -d)
@@ -65,6 +67,7 @@ done
 if [[ "$ready" != true ]]; then tail -n 80 "$out/console-serie.log"; exit 1; fi
 timeout 300 "${vm[@]}" sudo cloud-init status --wait
 git -C "$repo" archive HEAD | "${vm[@]}" 'mkdir -p ~/source && tar -x -C ~/source'
+tar -C "$package_dir" -cf - . | "${vm[@]}" 'mkdir -p ~/package && tar -x -C ~/package'
 set +e
 "${vm[@]}" "bash ~/source/debian/verify-desktop-guest.sh '$edition'" 2>&1 | tee "$out/session.log"
 guest_result=${PIPESTATUS[0]}

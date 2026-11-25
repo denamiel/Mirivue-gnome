@@ -13,7 +13,7 @@ Depends: ${misc:Depends}, ${python3:Depends},
  python3-gi, python3-gi-cairo, python3-cairo,
  gir1.2-gtk-4.0 (>= 4.12), gir1.2-adw-1 (>= 1.5), gir1.2-gnomedesktop-4.0,
  gir1.2-poppler-0.18, gir1.2-gstreamer-1.0, gvfs, gvfs-backends,
- libgtk-4-media-gstreamer | libgtk-4-1 (>= 4.16),
+ libgtk-4-media-gstreamer, libglib2.0-bin,
  python3-pil, python3-mutagen, hicolor-icon-theme, ffmpeg, mediainfo, gstreamer1.0-plugins-good,
  libimage-exiftool-perl, mkvtoolnix
 Recommends: pulseaudio-utils

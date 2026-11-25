@@ -4,6 +4,9 @@ report=/tmp/mirivue-validation
 exec > >(tee "$report/installation.log") 2>&1
 dpkg-query -W mirivue-gnome
 mirivue-gnome --version
+command -v gio
+gio version
+gio trash --empty
 GSK_RENDERER=cairo mirivue-gnome --window-smoke-test
 export GSK_RENDERER=cairo LANGUAGE=fr LC_ALL=C.UTF-8
 gtk-launch org.pdenams.Mirivue.Gtk4

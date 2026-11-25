@@ -1,14 +1,48 @@
 name: Validation du paquet Debian et Ubuntu
 on:
   push:
-    branches: [codex/validation-debian-ubuntu]
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  paquet:
+  build:
+    name: Construire le paquet commun
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 15
+    container: debian:13
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Construire le paquet et calculer sa somme SHA-256
+        shell: bash
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential devscripts equivs ca-certificates
+          mk-build-deps --install --remove --tool 'apt-get -y --no-install-recommends' debian/control
+          dpkg-buildpackage --build=binary --no-sign
+          package="../mirivue-gnome_$(dpkg-parsechangelog -S Version)_all.deb"
+          test "$(dpkg-deb -f "$package" Package)" = mirivue-gnome
+          test "$(dpkg-deb -f "$package" Architecture)" = all
+          mkdir -p dist/deb
+          cp "$package" dist/deb/
+          cd dist/deb
+          sha256sum "${package##*/}" > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mirivue-gnome-deb
+          path: dist/deb/
+          if-no-files-found: error
+
+  paquet:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -16,23 +50,33 @@ jobs:
     container: ${{ matrix.image }}
     steps:
       - uses: actions/checkout@v4
-      - name: Construire le paquet natif
+      - uses: actions/download-artifact@v4
+        with:
+          name: mirivue-gnome-deb
+          path: dist/deb
+      - name: Installer sans paquets recommandés et vérifier le lancement
         shell: bash
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          export DEBIAN_FRONTEND=noninteractive
+          (cd dist/deb && sha256sum --check SHA256SUMS)
           apt-get update
-          apt-get install -y --no-install-recommends build-essential devscripts equivs ca-certificates
-          mk-build-deps --install --remove --tool 'apt-get -y --no-install-recommends' debian/control
-          dpkg-buildpackage --build=binary --no-sign
-      - name: Installer le paquet et vérifier le lancement graphique
-        shell: bash
-        run: |
-          export DEBIAN_FRONTEND=noninteractive
-          apt-get install -y ../mirivue-gnome_*.deb xvfb xauth dbus-x11 imagemagick xdotool libgtk-3-bin
+          apt-get install -y --no-install-recommends gir1.2-gtk-4.0
+          apt-get install -y --no-install-recommends ./dist/deb/mirivue-gnome_*_all.deb
+          command -v gio
+          apt-get install -y --no-install-recommends xvfb xauth dbus-x11 imagemagick xdotool libgtk-3-bin fonts-dejavu-core
           mkdir -p /tmp/mirivue-validation
           useradd -m mirivue-validation
           chown mirivue-validation /tmp/mirivue-validation
           runuser -u mirivue-validation -- bash -c 'cd "$HOME"; timeout 120 xvfb-run -a -s "-screen 0 1440x900x24" dbus-run-session -- bash "$1/debian/verify-installed.sh"' bash "$GITHUB_WORKSPACE"
+      - name: Vérifier la réinstallation et la désinstallation
+        shell: bash
+        run: |
+          apt-get install -y --reinstall ./dist/deb/mirivue-gnome_*_all.deb
+          apt-get remove -y mirivue-gnome
+          apt-get purge -y mirivue-gnome
+          test ! -e /usr/bin/mirivue-gnome
+          test ! -e /usr/share/applications/org.pdenams.Mirivue.Gtk4.desktop
       - name: Conserver les preuves de validation
         if: always()
         uses: actions/upload-artifact@v4
@@ -40,16 +84,22 @@ jobs:
           name: validation-${{ strategy.job-index }}
           path: /tmp/mirivue-validation/
           if-no-files-found: ignore
+
   bureau:
+    needs: build
     name: Session graphique (${{ matrix.system }})
     runs-on: ubuntu-24.04
     timeout-minutes: 65
     strategy:
       fail-fast: false
       matrix:
-        system: [ubuntu-24.04, debian-13]
+        system: [ubuntu-24.04, ubuntu-26.04, debian-13]
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: mirivue-gnome-deb
+          path: dist/deb
       - name: Préparer l’environnement QEMU
         run: |
           sudo apt-get update
@@ -59,7 +109,7 @@ jobs:
         env:
           VALIDATION_SYSTEM: ${{ matrix.system }}
         run: |
-          bash debian/verify-desktop-vm.sh "$VALIDATION_SYSTEM" gnome
+          bash debian/verify-desktop-vm.sh "$VALIDATION_SYSTEM" gnome dist/deb
       - name: Conserver la capture du bureau et les journaux
         if: always()
         uses: actions/upload-artifact@v4

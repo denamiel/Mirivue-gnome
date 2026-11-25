@@ -11,7 +11,7 @@ if [[ -d /etc/needrestart/conf.d ]]; then
   printf '%s\n' '$nrconf{restart} = "l";' | sudo tee /etc/needrestart/conf.d/99-mirivue-validation.conf >/dev/null
 fi
 sudo env DEBIAN_FRONTEND=noninteractive apt-get update
-sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential devscripts equivs libgtk-3-bin \
+sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libgtk-3-bin \
   dbus-user-session udisks2 python3-pyatspi fonts-dejavu-core pipewire-audio
 case "$edition" in
   gnome)
@@ -43,9 +43,10 @@ env -u DBUS_SESSION_BUS_ADDRESS systemctl --user daemon-reload
 env -u DBUS_SESSION_BUS_ADDRESS systemctl --user start dbus.socket
 export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 sudo systemctl restart "$manager"
-sudo mk-build-deps --install --remove --tool 'apt-get -y --no-install-recommends' debian/control
-dpkg-buildpackage --build=binary --no-sign
-sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y ../"$pkg"_*.deb
+(cd "$HOME/package" && sha256sum --check SHA256SUMS)
+packages=("$HOME"/package/"$pkg"_*.deb)
+test "${#packages[@]}" -eq 1
+sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${packages[0]}"
 dpkg-query -W "$pkg"
 "$pkg" --version
 
@@ -56,7 +57,7 @@ for ((attempt=0; attempt<90; attempt++)); do
   while read -r id _; do
     if [[ "$(loginctl show-session "$id" -p Name --value)" == validation &&
           "$(loginctl show-session "$id" -p Seat --value)" == seat0 &&
-          "$(loginctl show-session "$id" -p Type --value)" =~ ^(wayland|x11)$ ]]; then
+          "$(loginctl show-session "$id" -p Type --value)" == wayland ]]; then
       session=$id
       break
     fi

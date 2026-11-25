@@ -34,6 +34,26 @@ class NativeFileBehaviorsTests(unittest.TestCase):
         renamed.unlink()
         support.until(lambda: str(renamed) not in pane.items)
 
+    def test_cache_does_not_key_old_metadata_with_a_new_fingerprint(self):
+        from mirivue_gtk4.core.extensions import fingerprint
+
+        path = self.root / 'cache-race.txt'
+        path.write_bytes(b'old')
+        row = SimpleNamespace(path=path, file_signature=fingerprint(path))
+
+        def replace_after_read(target):
+            snapshot = fingerprint(target)
+            path.write_bytes(b'new contents')
+            return snapshot
+
+        with patch('mirivue_gtk4.backend.fingerprint', side_effect=replace_after_read), \
+                patch('mirivue_gtk4.backend.library.encode_row', return_value={'path': str(path)}):
+            self.assertTrue(self.state.put(row))
+
+        with self.state.db() as db:
+            cached, = db.execute('SELECT signature FROM cache WHERE path=?', (str(path),)).fetchone()
+        self.assertNotEqual(cached, self.state.signature(path))
+
     def test_gio_view_updates_automatically_and_navigation_releases_monitor(self):
         pane = self.window.active
         pane.open_remote(Gio.File.new_for_path(str(self.folder)))

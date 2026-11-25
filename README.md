@@ -6,8 +6,8 @@ KIO ou KDE.
 
 ## Version et état
 
-**1.0.0-beta.2** rend l’actualisation des dossiers automatique avec GIO et retire
-l’ancien interrupteur des Préférences. F5 reste disponible.
+**1.0.6-beta.1** corrige la mise en cache des métadonnées pendant une modification externe.
+L’actualisation des dossiers par GIO reste automatique et F5 reste disponible.
 
 La série bêta **1.0** conserve les fonctionnalités de 0.6.24. Les sauvegardes des métadonnées
 conservent le premier original avec un suivi de provenance vérifié ; les anciennes
@@ -88,6 +88,10 @@ sudo pacman -Syu mirivue-gnome
 Les mises à jour suivantes passent par `sudo pacman -Syu`. Aucune clé privée
 ni connexion GitHub n'est nécessaire sur l'ordinateur client. L'édition GNOME
 n'installe pas les dépendances KDE de l'autre édition.
+
+### Debian 13 et Ubuntu 24.04 / 26.04
+
+Télécharger le paquet `mirivue-gnome_*_all.deb` depuis les [Releases GitHub](https://github.com/denamiel/Mirivue-gnome/releases), puis l’installer avec `sudo apt install ./mirivue-gnome_*_all.deb` depuis son dossier de téléchargement.
 
 ### Fedora
 

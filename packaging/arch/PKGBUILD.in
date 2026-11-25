@@ -2,7 +2,7 @@
 pkgname=mirivue-gnome
 pkgver=@ARCH_VERSION@
 _upstreamver=@VERSION@
-pkgrel=3
+pkgrel=1
 pkgdesc='Gestionnaire de fichiers et de médias GNOME à deux panneaux'
 arch=('any')
 url='https://github.com/denamiel/Mirivue-gnome'
