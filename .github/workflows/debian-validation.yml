@@ -73,7 +73,6 @@ jobs:
         shell: bash
         run: |
           apt-get install -y --reinstall ./dist/deb/mirivue-gnome_*_all.deb
-          apt-get remove -y mirivue-gnome
           apt-get purge -y mirivue-gnome
           test ! -e /usr/bin/mirivue-gnome
           test ! -e /usr/share/applications/org.pdenams.Mirivue.Gtk4.desktop
