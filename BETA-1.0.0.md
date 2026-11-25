@@ -1,4 +1,4 @@
-# Mirivue GNOME 1.0.6-beta.1
+# Mirivue GNOME 1.0.6-rc.1
 
 ## Numérotation
 
@@ -7,13 +7,13 @@ GNOME ou de répertoire des réglages.
 
 | Usage | Version |
 | --- | --- |
-| Application, sources et tag | `1.0.6-beta.1` / `v1.0.6-beta.1` |
-| Fedora / RPM | `1.0.6~beta.1` |
-| Debian / Ubuntu | `1.0.6~beta.1-1` |
-| Arch / CachyOS | `1.0.6beta1` |
-| Métadonnées Python | `1.0.6b1` |
+| Application, sources et tag | `1.0.6-rc.1` / `v1.0.6-rc.1` |
+| Fedora / RPM | `1.0.6~rc.1` |
+| Debian / Ubuntu | `1.0.6~rc.1-1` |
+| Arch / CachyOS | `1.0.6rc1` |
+| Métadonnées Python | `1.0.6rc1` |
 
-La numérotation de la bêta suit la base 1.0.6 de Mirivue KDE. Le workflow de publication marque les
+La numérotation de la version candidate suit la base 1.0.6 de Mirivue KDE. Le workflow de publication marque les
 versions alpha/bêta/RC comme préversions lorsqu'un tag est publié.
 Le passage à 1.0 bêta ne signifie pas que les limites de 0.6.24 sont levées.
 

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 edition=$1
+repetitions=${2:-1}
+[[ "$repetitions" =~ ^([1-9]|[1-5][0-9]|60)$ ]]
 pkg=mirivue-$edition
 export LC_ALL=C.UTF-8
 export DEBIAN_FRONTEND=noninteractive
@@ -13,6 +15,11 @@ fi
 sudo env DEBIAN_FRONTEND=noninteractive apt-get update
 sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libgtk-3-bin \
   dbus-user-session udisks2 python3-pyatspi fonts-dejavu-core pipewire-audio
+if ((repetitions > 1)); then
+  sudo apt-get install -y --no-install-recommends systemd-coredump gdb
+  sudo systemctl restart systemd-sysctl.service
+  printf 'Collecteur de crash : %s\n' "$(cat /proc/sys/kernel/core_pattern)"
+fi
 case "$edition" in
   gnome)
     desktop=org.pdenams.Mirivue.Gtk4
@@ -85,11 +92,16 @@ if [[ "$display_ready" != true ]]; then
 fi
 loginctl show-session "$session" -p Type -p Desktop -p Active
 bash debian/prepare-integration-fixtures.sh
-systemd-run --user --wait --pipe --collect bash -s -- "$pkg" "$desktop" <<'SESSION'
+diagnostic_started=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
+result=0
+systemd-run --user --wait --pipe --collect bash -s -- "$pkg" "$desktop" "$repetitions" <<'SESSION' || result=$?
 set -euo pipefail
 pkg=$1
 cd "$HOME"
 desktop=$2
+repetitions=$3
+export PYTHONFAULTHANDLER=1
+if ((repetitions > 1)); then ulimit -c unlimited; fi
 if [[ "$pkg" == mirivue-gnome ]]; then
   export LANGUAGE=fr LC_ALL=C.UTF-8
   gsettings set org.gnome.desktop.interface toolkit-accessibility true
@@ -126,7 +138,19 @@ if ((status)); then
 fi
 if [[ "$pkg" == mirivue-gnome ]]; then
   timeout 60 "$pkg" --window-smoke-test || status=1
-  timeout 240 /usr/bin/python3 -m unittest discover -s "$HOME/source/tests" -p "test_native_file_behaviors.py" -v || status=1
+  successes=0
+  for ((attempt=1; attempt<=repetitions; attempt++)); do
+    printf 'Suite GTK Wayland : essai %d/%d\n' "$attempt" "$repetitions"
+    if timeout --kill-after=5 90 /usr/bin/python3 -X faulthandler -m unittest discover \
+        -s "$HOME/source/tests" -p test_native_file_behaviors.py -v; then
+      successes=$((successes + 1))
+    else
+      result=$?
+      printf 'Suite GTK Wayland : essai %d/%d en échec (%d)\n' "$attempt" "$repetitions" "$result"
+      status=1
+    fi
+  done
+  printf 'Suite GTK Wayland : %d/%d réussis\n' "$successes" "$repetitions"
 else
   timeout 90 "$pkg" --native-places-contract || status=1
   timeout 90 "$pkg" --ui-contract || status=1
@@ -140,3 +164,11 @@ fi
 timeout 240 /usr/bin/python3 "$HOME/source/debian/check-linux-integrations.py" "$pkg" || status=1
 exit "$status"
 SESSION
+if ((result != 0 && repetitions > 1)); then
+  python_executable=$(readlink -f /usr/bin/python3)
+  sudo coredumpctl --since "$diagnostic_started" --no-pager list "$python_executable" || true
+  sudo coredumpctl --since "$diagnostic_started" --no-pager info "$python_executable" || true
+  sudo timeout 120 coredumpctl --since "$diagnostic_started" \
+    --debugger-arguments="-batch -ex 'thread apply all bt'" debug "$python_executable" || true
+fi
+exit "$result"

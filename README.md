@@ -6,7 +6,7 @@ KIO ou KDE.
 
 ## Version et état
 
-**1.0.6-beta.1** corrige la mise en cache des métadonnées pendant une modification externe.
+**1.0.6-rc.1** est le candidat à la stabilisation de la série 1.0.6.
 L’actualisation des dossiers par GIO reste automatique et F5 reste disponible.
 
 La série bêta **1.0** conserve les fonctionnalités de 0.6.24. Les sauvegardes des métadonnées
@@ -18,9 +18,7 @@ renommage individuel par popover, transferts et annulation groupés, propriété
 récursives GIO, recherche récursive et modèles de documents. La restauration des
 onglets et les préférences par dossier sont facultatives et propres à Mirivue.
 
-Les tests utilisent GTK/GIO sous Xvfb. Les résultats par distribution doivent
-être contrôlés dans GitHub Actions avant publication. Une comparaison manuelle
-GNOME/Wayland et des serveurs SMB/SFTP réels reste nécessaire.
+GitHub Actions valide les paquets Fedora et Arch sous Xvfb. Le même paquet Debian est testé dans des sessions GNOME Wayland sur Debian 13, Ubuntu 24.04 et Ubuntu 26.04.
 Voir [BETA-1.0.0.md](BETA-1.0.0.md) pour cette bêta et
 [NATIF-GNOME-0.6.24.md](NATIF-GNOME-0.6.24.md) pour la portée du rapprochement avec Nautilus.
 

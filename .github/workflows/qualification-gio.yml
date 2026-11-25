@@ -1,0 +1,69 @@
+name: Intégrité des transferts GIO
+on:
+  push:
+    branches: [codex/mirivue-gnome-1-0-6-rc]
+    paths:
+      - '.github/workflows/qualification-gio.yml'
+      - 'debian/**'
+      - 'mirivue_gtk4/core/gio_backend.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  network:
+    name: Coupures ${{ matrix.protocol }} dans un réseau isolé
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        protocol: [smb, sftp]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Construire et qualifier le paquet
+        env:
+          PROTOCOL: ${{ matrix.protocol }}
+        run: |
+          docker run --rm -i --cap-add=NET_ADMIN -e PROTOCOL -v "$PWD:/input:ro" debian:13 bash -euo pipefail -s <<'TEST'
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl build-essential devscripts equivs sudo dbus-x11 xvfb xauth samba openssh-server iptables iproute2
+          mkdir -p /build
+          cp -a /input/. /build/source
+          cd /build/source
+          mk-build-deps --install --remove --tool 'apt-get -y --no-install-recommends' debian/control
+          dpkg-buildpackage --build=binary --no-sign
+          apt-get install -y --no-install-recommends /build/mirivue-gnome_*.deb gvfs gvfs-backends
+          mirivue-gnome --version
+          useradd --create-home --shell /bin/bash validation
+          printf '%s\n' 'validation ALL=(root) NOPASSWD: /usr/sbin/iptables' > /etc/sudoers.d/validation
+          chmod 0440 /etc/sudoers.d/validation
+          install -o validation -g validation -d /tmp/validation-smb /home/validation/validation-ssh
+          if [[ "$PROTOCOL" = smb ]]; then
+            cat > /etc/samba/smb.conf <<'SMB'
+          [global]
+          interfaces = lo
+          bind interfaces only = yes
+          smb ports = 445
+          map to guest = Bad User
+          [mirivue]
+          force user = validation
+          path = /tmp/validation-smb
+          guest ok = yes
+          read only = no
+          SMB
+            smbd --daemon
+          else
+            install -d -m 0755 /run/sshd
+            runuser -u validation -- mkdir -m 0700 /home/validation/.ssh
+            runuser -u validation -- ssh-keygen -q -t ed25519 -N '' -f /home/validation/.ssh/id_ed25519
+            runuser -u validation -- cp /home/validation/.ssh/id_ed25519.pub /home/validation/.ssh/authorized_keys
+            /usr/sbin/sshd -o ListenAddress=127.0.0.1 -o UsePAM=yes
+            runuser -u validation -- ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new validation@127.0.0.1 true
+          fi
+          tc qdisc replace dev lo root tbf rate 120mbit burst 128kb latency 100ms
+          timeout --kill-after=8 250 runuser -u validation -- \
+            xvfb-run -a dbus-run-session -- /usr/bin/python3 -u /build/source/debian/qualify-network.py "$PROTOCOL"
+          TEST

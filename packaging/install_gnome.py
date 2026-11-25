@@ -9,7 +9,7 @@ import sys
 import tarfile
 import tempfile
 
-VERSION = '1.0.6-beta.1'
+VERSION = '1.0.6-rc.1'
 APP_ID = 'org.pdenams.Mirivue.Gtk4'
 
 

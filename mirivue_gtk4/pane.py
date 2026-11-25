@@ -2382,7 +2382,8 @@ class Pane(Gtk.Box):
             self.search_gio_cancel.cancel()
         popover = getattr(self, 'rename_popover', None)
         if popover is not None:
-            popover.popdown()
+            from .rename_popover import dismiss_rename
+            dismiss_rename(popover)
         self.closed = True
         self.status_index.close()
         self.cancel.set()

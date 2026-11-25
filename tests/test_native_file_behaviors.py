@@ -144,6 +144,19 @@ class NativeFileBehaviorsTests(unittest.TestCase):
         support.until(lambda: (self.folder / 'renamed.mkv').exists())
         self.assertFalse(source.exists())
 
+    def test_closing_window_detaches_focused_rename_popover(self):
+        source = self.folder / 'rename only.txt'
+        source.write_text('untouched')
+        pane = self.window.active
+        pane.open(self.folder)
+        support.until(lambda: str(source) in pane.items)
+        popover = pane.start_inline_rename(pane.items[str(source)])
+        support.until(lambda: popover.get_visible() and
+                      (focus := self.window.get_focus()) is not None and focus.is_ancestor(popover))
+        self.window.shutdown()
+        support.until(lambda: popover.get_parent() is None and not self.app.get_windows())
+        self.assertEqual(source.read_text(), 'untouched')
+
     def test_one_copy_action_is_undone_and_redone_once(self):
         paths = [self.folder / 'one.txt', self.folder / 'two.txt']
         destination = self.folder / 'destination'

@@ -9,10 +9,23 @@ from .i18n import tr
 from .core import file_moves, renaming
 
 
+def _clear_popover_focus(popover):
+    root = popover.get_root()
+    focus = root.get_focus() if root is not None else None
+    if focus is not None and (focus is popover or focus.is_ancestor(popover)):
+        root.set_focus(None)
+
+
+def dismiss_rename(popover):
+    # Let GTK finish the input method focus before it destroys the entry.
+    _clear_popover_focus(popover)
+    popover.popdown()
+
+
 def show_rename(pane, item):
     old = getattr(pane, 'rename_popover', None)
     if old is not None:
-        old.popdown()
+        dismiss_rename(old)
     view = pane.grid if pane.local_view == 'icons' else pane.view
     popover = Gtk.Popover(autohide=True)
     popover.set_parent(view)
@@ -49,13 +62,21 @@ def show_rename(pane, item):
     def accept(*_):
         if not button.get_sensitive() or pane.closed or generation != pane.generation:
             return
-        pane.window.finish_inline_rename(item, entry.get_text())
-        popover.popdown()
+        name = entry.get_text()
+        dismiss_rename(popover)
+        pane.window.finish_inline_rename(item, name)
 
     def closed(*_):
         if pane.rename_popover is popover:
             pane.rename_popover = None
-        GLib.idle_add(lambda: (popover.unparent(), False)[1])
+        _clear_popover_focus(popover)
+
+        def detach():
+            if popover.get_parent() is not None:
+                popover.unparent()
+            return GLib.SOURCE_REMOVE
+
+        GLib.idle_add(detach)
 
     def anchor(widget):
         child = widget.get_first_child()
