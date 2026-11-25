@@ -1,3 +1,8 @@
+## 1.0.6 — 25 novembre 2026
+
+- Première livraison stable de la série 1.0.6 pour Mirivue GNOME.
+- Intègre le correctif de fermeture du renommage F2 sous Wayland et la protection de l’ancienne destination pendant les remplacements GIO.
+
 ## 1.0.6-rc.1 — 25 novembre 2026
 
 - Préserve le fichier de destination si un remplacement GIO est interrompu avant la fin de la copie.

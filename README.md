@@ -6,7 +6,7 @@ KIO ou KDE.
 
 ## Version et état
 
-**1.0.6-rc.1** est le candidat à la stabilisation de la série 1.0.6.
+**1.0.6** est la version stable de Mirivue GNOME. Elle inclut les correctifs du renommage F2 sous Wayland et de protection du fichier de destination pendant un remplacement GIO.
 L’actualisation des dossiers par GIO reste automatique et F5 reste disponible.
 
 La série bêta **1.0** conserve les fonctionnalités de 0.6.24. Les sauvegardes des métadonnées
@@ -19,7 +19,7 @@ récursives GIO, recherche récursive et modèles de documents. La restauration 
 onglets et les préférences par dossier sont facultatives et propres à Mirivue.
 
 GitHub Actions valide les paquets Fedora et Arch sous Xvfb. Le même paquet Debian est testé dans des sessions GNOME Wayland sur Debian 13, Ubuntu 24.04 et Ubuntu 26.04.
-Voir [BETA-1.0.0.md](BETA-1.0.0.md) pour cette bêta et
+Voir [BETA-1.0.0.md](BETA-1.0.0.md) pour l’historique de cette qualification et
 [NATIF-GNOME-0.6.24.md](NATIF-GNOME-0.6.24.md) pour la portée du rapprochement avec Nautilus.
 
 ## Licence

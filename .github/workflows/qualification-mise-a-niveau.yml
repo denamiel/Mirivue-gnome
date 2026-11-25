@@ -1,7 +1,7 @@
-name: Mise à niveau de Mirivue GNOME depuis la bêta
+name: Mise à niveau de Mirivue GNOME depuis la version candidate
 on:
   push:
-    branches: [codex/mirivue-gnome-1-0-6-rc]
+    branches: [codex/mirivue-gnome-1-0-6-stable]
   workflow_dispatch:
 permissions:
   contents: read
@@ -15,34 +15,21 @@ jobs:
         include:
           - system: 'ubuntu:24.04'
             manager: apt
-            beta: mirivue-gnome_1.0.6.beta.1-1_all.deb
-            digest: 3527e0a816d0f0da1715bc4ae5af30a923048b3822843fa9f358439a7d044a69
           - system: 'ubuntu:26.04'
             manager: apt
-            beta: mirivue-gnome_1.0.6.beta.1-1_all.deb
-            digest: 3527e0a816d0f0da1715bc4ae5af30a923048b3822843fa9f358439a7d044a69
           - system: 'debian:13'
             manager: apt
-            beta: mirivue-gnome_1.0.6.beta.1-1_all.deb
-            digest: 3527e0a816d0f0da1715bc4ae5af30a923048b3822843fa9f358439a7d044a69
           - system: 'fedora:44'
             manager: dnf
-            beta: mirivue-gnome-1.0.6.beta.1-1.fc44.noarch.rpm
-            digest: 488d362a9e1cb36b5447ca6dff61a008c06f0e2e8bee5abc51c770617ff3ff67
           - system: 'fedora:45'
             manager: dnf
-            beta: mirivue-gnome-1.0.6.beta.1-1.fc45.noarch.rpm
-            digest: ece286cb835d0ac660af3274a8faf9a95f7bcd78db13b9d93501cf4853b2ab83
           - system: 'archlinux:base-devel'
             manager: pacman
-            beta: mirivue-gnome-1.0.6beta1-1-any.pkg.tar.zst
-            digest: e7df57b6e9951c4976fa2576a52526b59fcc9a01eaa37d0cb4961beb4c3dff6f
     name: Mise à niveau (${{ matrix.system }})
     container: ${{ matrix.system }}
     env:
       MANAGER: ${{ matrix.manager }}
-      BETA: ${{ matrix.beta }}
-      BETA_SHA: ${{ matrix.digest }}
+      SYSTEM: ${{ matrix.system }}
       DEBIAN_FRONTEND: noninteractive
       GSK_RENDERER: cairo
       PYTHONFAULTHANDLER: '1'
@@ -75,37 +62,57 @@ jobs:
               runuser -u builder -- bash -c 'cd "$1/dist/aur"; makepkg --noconfirm --cleanbuild' -- "$GITHUB_WORKSPACE"
               ;;
           esac
-      - name: Vérifier le passage de la bêta publiée au candidat
+      - name: Installer la RC publiée et passer à la version stable
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           tmp=$(mktemp -d)
           cd "$tmp"
-          curl --fail --show-error --silent --location --retry 3 -o "$BETA" \
-            "https://github.com/denamiel/Mirivue-gnome/releases/download/v1.0.6-beta.1/$BETA"
-          printf '%s  %s\n' "$BETA_SHA" "$BETA" | sha256sum --check
+          curl --fail --show-error --silent --location --retry 3 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/v1.0.6-rc.1" -o release.json
+          read -r archive digest download < <(python3 - <<'PY'
+          import json
+          import os
+
+          data = json.load(open('release.json'))
+          assert data['tag_name'] == 'v1.0.6-rc.1' and data['prerelease'] and not data['draft']
+          suffixes = {
+              'apt': '_all.deb',
+              'dnf': '.fc' + os.environ['SYSTEM'].split(':')[1] + '.noarch.rpm',
+              'pacman': '-any.pkg.tar.zst',
+          }
+          asset, = [entry for entry in data['assets']
+                    if entry['name'].startswith('mirivue-gnome') and entry['name'].endswith(suffixes[os.environ['MANAGER']])]
+          algorithm, digest = asset['digest'].split(':', 1)
+          assert algorithm == 'sha256'
+          print(asset['name'], digest, asset['browser_download_url'])
+          PY
+          )
+          curl --fail --show-error --silent --location --retry 3 -o "$archive" "$download"
+          printf '%s  %s\n' "$digest" "$archive" | sha256sum --check
           mkdir "$tmp/profile"
           export HOME="$tmp/profile" XDG_STATE_HOME="$tmp/profile/state" XDG_CONFIG_HOME="$tmp/profile/config" XDG_DATA_HOME="$tmp/profile/data" XDG_CACHE_HOME="$tmp/profile/cache"
           case "$MANAGER" in
-            apt) apt-get install -y "./$BETA" ;;
-            dnf) dnf -y install "./$BETA" ;;
-            pacman) pacman -U --noconfirm "./$BETA" ;;
+            apt) apt-get install -y "./$archive" ;;
+            dnf) dnf -y install "./$archive" ;;
+            pacman) pacman -U --noconfirm "./$archive" ;;
           esac
-          test "$(mirivue-gnome --version)" = 1.0.6-beta.1
-          timeout 30 xvfb-run -a dbus-run-session -- /usr/bin/python3 "$GITHUB_WORKSPACE/packaging/qualify-profile.py" prepare 1.0.6-beta.1
+          test "$(mirivue-gnome --version)" = 1.0.6-rc.1
+          timeout 30 xvfb-run -a dbus-run-session -- /usr/bin/python3 "$GITHUB_WORKSPACE/packaging/qualify-profile.py" prepare 1.0.6-rc.1
           case "$MANAGER" in
             apt)
-              dpkg --compare-versions '1.0.6~beta.1-1' lt '1.0.6~rc.1-1'
               dpkg --compare-versions '1.0.6~rc.1-1' lt '1.0.6-1'
-              apt-get install -y "$GITHUB_WORKSPACE"/../mirivue-gnome_1.0.6~rc.1-1_all.deb
+              apt-get install -y "$GITHUB_WORKSPACE"/../mirivue-gnome_1.0.6-1_all.deb
               ;;
             dnf)
               dnf -y upgrade "$GITHUB_WORKSPACE"/dist/rpms/noarch/*.rpm
               ;;
             pacman)
-              test "$(vercmp 1.0.6beta1-1 1.0.6rc1-1)" = -1
               test "$(vercmp 1.0.6rc1-1 1.0.6-1)" = -1
               pacman -U --noconfirm "$GITHUB_WORKSPACE"/dist/aur/*.pkg.tar.zst
               ;;
           esac
-          test "$(mirivue-gnome --version)" = 1.0.6-rc.1
-          timeout 30 xvfb-run -a dbus-run-session -- /usr/bin/python3 "$GITHUB_WORKSPACE/packaging/qualify-profile.py" verify 1.0.6-rc.1
+          test "$(mirivue-gnome --version)" = 1.0.6
+          timeout 30 xvfb-run -a dbus-run-session -- /usr/bin/python3 "$GITHUB_WORKSPACE/packaging/qualify-profile.py" verify 1.0.6
