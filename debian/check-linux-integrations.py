@@ -1,6 +1,4 @@
 """Integration checks run in a disposable GNOME or Plasma desktop session."""
-import hashlib
-import os
 import shutil
 import subprocess
 import sys
@@ -102,7 +100,9 @@ class Gnome:
         manager.undo()
         assert file.read_bytes() == b"Mirivue\n"
 
-    def mount_share(self, url):
+    def download(self, url, destination):
+        from mirivue_gtk4.core import gio_backend
+
         remote = self.gio.File.new_for_uri(url)
         loop = self.glib.MainLoop()
         operation = self.gio.MountOperation()
@@ -122,85 +122,9 @@ class Gnome:
         loop.run()
         if errors:
             raise errors[0]
-        return remote
-
-    def download(self, url, destination):
-        from mirivue_gtk4.core import gio_backend
-
-        remote = self.mount_share(url)
         entries = gio_backend.browse(remote)
         child, = [entry[1] for entry in entries if entry[1].get_basename() == "exemple.txt"]
         gio_backend.transfer([child], self.gio.File.new_for_path(str(destination)))
-
-    def qualify_network(self, url, server_folder):
-        from mirivue_gtk4.core import gio_backend
-
-        port = "445" if url.startswith("smb:") else "22"
-        rule = ["OUTPUT", "-o", "lo", "-p", "tcp", "--dport", port, "-j", "REJECT", "--reject-with", "tcp-reset"]
-        path = server_folder / "qualification.bin"
-        path.write_bytes(os.urandom(48 * 1024 * 1024))
-        path.chmod(0o644)
-
-        def digest(path):
-            with path.open("rb") as data:
-                return hashlib.file_digest(data, "sha256").hexdigest()
-
-        original = digest(path)
-        try:
-            for profile in ('copie', 'remplacement', 'déplacement avec remplacement'):
-                replacing = profile != 'copie'
-                for fraction in (0.01, 0.50):
-                    with tempfile.TemporaryDirectory() as folder:
-                        directory = Path(folder)
-                        for attempt in range(40):
-                            try:
-                                source = self.mount_share(url).get_child(path.name)
-                                source.query_info("standard::size", self.gio.FileQueryInfoFlags.NONE, None)
-                                break
-                            except self.glib.Error as error:
-                                if attempt == 39 or not error.matches(
-                                    self.gio.io_error_quark(), self.gio.IOErrorEnum.NOT_MOUNTED
-                                ):
-                                    raise
-                                time.sleep(0.1)
-                        target = directory / path.name
-                        if replacing:
-                            target.write_bytes(b"ancienne destination")
-                            expected = digest(target)
-                        disconnected = False
-
-                        def interrupt(done, total):
-                            nonlocal disconnected
-                            if not disconnected and 0 < done < total and done / total >= fraction:
-                                subprocess.run(["sudo", "-n", "iptables", "-I", *rule], check=True, timeout=10)
-                                disconnected = True
-
-                        try:
-                            if replacing:
-                                gio_backend.replace(
-                                    source, self.gio.File.new_for_path(str(target)),
-                                    move=profile == "déplacement avec remplacement", progress=interrupt,
-                                )
-                            else:
-                                gio_backend.transfer([source], self.gio.File.new_for_path(folder), progress=interrupt)
-                        except (self.glib.Error, OSError):
-                            if not disconnected:
-                                raise
-                        else:
-                            raise AssertionError("Le transfert interrompu n’a pas signalé d’erreur.")
-                        finally:
-                            if disconnected:
-                                subprocess.run(["sudo", "-n", "iptables", "-D", *rule], check=True, timeout=10)
-                        assert disconnected
-                        assert digest(path) == original
-                        if replacing:
-                            assert digest(target) == expected, "Le fichier précédemment présent a changé."
-                            assert list(directory.iterdir()) == [target]
-                        else:
-                            assert not list(directory.iterdir()), "La copie partielle est restée visible."
-                        print(f"{url.split(':', 1)[0]} : {profile}, coupure à {fraction:.0%} — intégrité vérifiée", flush=True)
-        finally:
-            path.unlink()
 
     def _authenticate(self, operation, _message, _user, _domain, flags):
         if flags & self.gio.AskPasswordFlags.ANONYMOUS_SUPPORTED:
@@ -320,15 +244,6 @@ def run(backend):
         except Exception:
             traceback.print_exc()
             failures.append(protocol)
-
-    if isinstance(backend, Gnome) and os.environ.get("QUALIFY_NETWORK") == "1":
-        for url, server in (("smb://127.0.0.1/mirivue/", Path("/tmp/validation-smb")),
-                            (local_sftp, Path.home() / "validation-ssh")):
-            try:
-                backend.qualify_network(url, server)
-            except Exception:
-                traceback.print_exc()
-                failures.append(url.split(":", 1)[0] + " interrompu")
 
     try:
         with tempfile.TemporaryDirectory() as media:

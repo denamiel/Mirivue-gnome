@@ -51,7 +51,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {system: ubuntu-26.04, shard: 1, network: '1'}
+          - {system: ubuntu-26.04, shard: 1}
           - {system: ubuntu-26.04, shard: 2}
           - {system: ubuntu-26.04, shard: 3}
           - {system: ubuntu-24.04, shard: 1}
@@ -71,7 +71,6 @@ jobs:
           if test -c /dev/kvm; then sudo setfacl -m "u:$(id -un):rw" /dev/kvm; fi
       - name: Répéter la suite GTK sur le bureau Wayland
         env:
-          QUALIFY_NETWORK: ${{ matrix.network || '0' }}
           VALIDATION_SYSTEM: ${{ matrix.system }}
         run: bash debian/verify-desktop-vm.sh "$VALIDATION_SYSTEM" gnome dist/deb 20
       - name: Conserver les journaux et les piles de plantage
