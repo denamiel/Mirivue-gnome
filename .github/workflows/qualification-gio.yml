@@ -47,9 +47,10 @@ jobs:
           bind interfaces only = yes
           map to guest = Bad User
           [mirivue]
+          force user = validation
           path = /tmp/validation-smb
           guest ok = yes
-          read only = yes
+          read only = no
           SMB
             smbd --daemon
           else
@@ -75,6 +76,66 @@ jobs:
               directory = Path.home() / "validation-ssh"
               url = f"sftp://validation@127.0.0.1{directory}/"
           print(f"Début de la qualification {protocol}", flush=True)
-          Gnome().qualify_network(url, directory)
+          backend = Gnome()
+          backend.qualify_network(url, directory)
+
+          import hashlib
+          import os
+          import subprocess
+          import tempfile
+          import time
+          from mirivue_gtk4.core import gio_backend
+
+          def digest(path):
+              with path.open("rb") as data:
+                  return hashlib.file_digest(data, "sha256").hexdigest()
+
+          port = "445" if protocol == "smb" else "22"
+          rule = ["OUTPUT", "-o", "lo", "-p", "tcp", "--dport", port,
+                  "-j", "REJECT", "--reject-with", "tcp-reset"]
+          with tempfile.TemporaryDirectory() as folder:
+              local = Path(folder) / "sortant.bin"
+              local.write_bytes(os.urandom(48 * 1024 * 1024))
+              original = digest(local)
+              source = backend.gio.File.new_for_path(str(local))
+              destination = directory / local.name
+              for move in (False, True):
+                  for fraction in (0.01, 0.50):
+                      destination.write_bytes(b"ancienne version sur le serveur")
+                      previous = digest(destination)
+                      for attempt in range(40):
+                          try:
+                              remote = backend.mount_share(url).get_child(local.name)
+                              remote.query_info("standard::size", backend.gio.FileQueryInfoFlags.NONE, None)
+                              break
+                          except backend.glib.Error as error:
+                              if attempt == 39 or not error.matches(
+                                  backend.gio.io_error_quark(), backend.gio.IOErrorEnum.NOT_MOUNTED
+                              ):
+                                  raise
+                              time.sleep(0.1)
+                      interrupted = []
+                      def cut(done, total):
+                          if not interrupted and 0 < done < total and done / total >= fraction:
+                              subprocess.run(["sudo", "-n", "iptables", "-I", *rule], check=True, timeout=10)
+                              interrupted.append(True)
+                      try:
+                          gio_backend.replace(source, remote, move=move, progress=cut)
+                      except (backend.glib.Error, OSError):
+                          if not interrupted:
+                              raise
+                      else:
+                          raise AssertionError("L'envoi interrompu n'a pas signalé d'erreur.")
+                      finally:
+                          if interrupted:
+                              subprocess.run(["sudo", "-n", "iptables", "-D", *rule], check=True, timeout=10)
+                      assert digest(local) == original
+                      assert digest(destination) == previous
+                      print(f"{protocol} : envoi avec remplacement, déplacement={move}, coupure à {fraction:.0%} — intégrité vérifiée")
+              remote = backend.mount_share(url).get_child(local.name)
+              gio_backend.replace(source, remote)
+              assert digest(destination) == original
+              assert digest(local) == original
+              print(f"{protocol} : remplacement sortant abouti — intégrité vérifiée")
           PY
           TEST
