@@ -1,0 +1,125 @@
+name: Publier Mirivue GNOME 1.0.6 RC
+on:
+  push:
+    branches: [codex/publication-gnome-1-0-6-rc]
+    paths: [.github/workflows/publish-gnome-1-0-6-rc.yml]
+permissions:
+  contents: read
+  actions: read
+env:
+  SOURCE_COMMIT: 46e4a804ffef195923ae02616a418f812e680d1a
+  RELEASE_TAG: v1.0.6-rc.1
+  QUALIFIED_COMMIT: 83fa3ca17b07bd0589c479ace070897aa7dd6032
+  PRODUCT_VALIDATED: a3c77e22e2ed3b2187dfc6a1bcdc0af8a0c564eb
+jobs:
+  release:
+    name: Publier les paquets testés
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_COMMIT }}
+          persist-credentials: false
+      - name: Vérifier les validations et récupérer les paquets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/branches/main" --jq '.commit.sha')" = "$SOURCE_COMMIT"
+          python3 packaging/check_release.py --require-license --tag "$RELEASE_TAG"
+          git_tree=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$QUALIFIED_COMMIT" --jq '.tree.sha')
+          test "$(git rev-parse 'HEAD^{tree}')" = "$git_tree"
+          for run in 45675126869 45675114270; do
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" |
+              jq -e --arg sha "$QUALIFIED_COMMIT" '.head_sha == $sha and .conclusion == "success"' > /dev/null
+          done
+          git fetch --depth=1 origin "$PRODUCT_VALIDATED"
+          changes=$(git diff --name-only "$PRODUCT_VALIDATED" HEAD -- . \
+            ':!.github/workflows/qualification-gio.yml' ':!.github/workflows/qualification-gnome.yml' \
+            ':!debian/check-linux-integrations.py' ':!debian/qualify-network.py' \
+            ':!debian/verify-desktop-guest.sh' ':!debian/verify-desktop-vm.sh')
+          test -z "$changes"
+          for run in 45672676603 45672676637 45672676642 45672664738; do
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" |
+              jq -e --arg sha "$PRODUCT_VALIDATED" '.head_sha == $sha and .conclusion == "success"' > /dev/null
+          done
+          for job in 139412229162 139412229184 139412229288 139412229314 139412229335; do
+            gh run view 45672664677 --job "$job" --log > "$RUNNER_TEMP/wayland-$job.log"
+            grep -F 'Suite GTK Wayland : 20/20 réussis' "$RUNNER_TEMP/wayland-$job.log"
+          done
+          gh run download 45675126869 --name rpm-fedora-44 --name rpm-fedora-45 --name arch-package --dir dist/validated
+          gh run download 45672664677 --name mirivue-gnome-deb --dir dist/deb
+          (cd dist/deb && sha256sum --check SHA256SUMS)
+          test "$(dpkg-deb -f dist/deb/mirivue-gnome_1.0.6~rc.1-1_all.deb Version)" = '1.0.6~rc.1-1'
+          mv 'dist/deb/mirivue-gnome_1.0.6~rc.1-1_all.deb' dist/deb/mirivue-gnome_1.0.6.rc.1-1_all.deb
+          (cd dist/deb && sha256sum ./*.deb > SHA256SUMS)
+          python3 packaging/make_source.py --no-aur
+      - name: Créer la préversion GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mapfile -d '' packages < <(find dist/validated -type f \( -name '*.rpm' -o -name '*.pkg.tar.zst' \) -print0)
+          test "${#packages[@]}" -ge 3
+          cat > "$RUNNER_TEMP/release-notes.md" <<'NOTES'
+          Mirivue GNOME 1.0.6-rc.1, édition GTK4/libadwaita.
+          
+          - Corrige la fermeture du champ de renommage F2 sous GNOME Wayland.
+          - Préserve l’ancien fichier si un remplacement par GIO est interrompu pendant la copie.
+          - Le paquet `.deb` commun a été testé sous Debian 13, Ubuntu 24.04 et Ubuntu 26.04, y compris en session GNOME Wayland.
+          - Les RPM Fedora 44/45 et le paquet Arch/CachyOS sont les artefacts des validations GitHub Actions.
+          
+          Pour installer le paquet Debian/Ubuntu téléchargé :
+          
+          ```bash
+          sudo apt install ./mirivue-gnome_1.0.6.rc.1-1_all.deb
+          ```
+          
+          Sur Fedora et Arch/CachyOS, privilégier les dépôts COPR et Pacman configurés sur le système.
+          NOTES
+          gh release create "$RELEASE_TAG" --prerelease --latest=false \
+            --target "$SOURCE_COMMIT" --title 'Mirivue GNOME 1.0.6-rc.1' \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            dist/deb/*.deb dist/deb/SHA256SUMS dist/mirivue-gnome-*.tar.gz dist/*.sha256 "${packages[@]}"
+          gh release view "$RELEASE_TAG" --json url,assets
+
+  copr:
+    name: Vérifier la publication dans COPR
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    steps:
+      - name: Attendre les RPM publics pour Fedora 44 et 45
+        run: |
+          python3 - <<'PY'
+          import json
+          import time
+          from urllib.request import urlopen
+
+          base = "https://copr.fedorainfracloud.org/api_3/"
+          expected = "1.0.6~rc.1-1"
+          targets = {"fedora-44-x86_64", "fedora-45-x86_64"}
+
+          def get(path):
+              with urlopen(base + path, timeout=20) as response:
+                  return json.load(response)["items"]
+
+          for attempt in range(36):
+              builds = get("build/list/?ownername=pdenams&projectname=mirivue-gnome&limit=10")
+              matching = [b for b in builds if (b.get("source_package") or {}).get("version") == expected]
+              if matching:
+                  build = max(matching, key=lambda b: b["id"])
+                  states = {b["name"]: b["state"] for b in get(f"build-chroot/list/?build_id={build['id']}")}
+                  print(build["id"], expected, states, flush=True)
+                  if all(states.get(name) == "succeeded" for name in targets):
+                      break
+                  if any(states.get(name) in {"failed", "canceled"} for name in targets):
+                      raise SystemExit("La construction COPR a échoué.")
+              elif attempt == 0:
+                  print("Construction COPR attendue.", flush=True)
+              time.sleep(30)
+          else:
+              raise SystemExit("Les RPM publics n’ont pas été confirmés dans le délai.")
+          PY
