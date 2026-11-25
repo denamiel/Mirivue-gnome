@@ -1,0 +1,38 @@
+name: Ajuster les liens du paquet Debian publié
+on:
+  push:
+    branches: [codex/publication-gnome-1-0-6]
+    paths: [.github/workflows/verifier-nom-deb-publie.yml]
+permissions:
+  contents: write
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: v1.0.6-beta.1
+      ORIGINAL_NAME: mirivue-gnome_1.0.6~beta.1-1_all.deb
+      PUBLISHED_NAME: mirivue-gnome_1.0.6.beta.1-1_all.deb
+    steps:
+      - name: Vérifier le paquet en ligne et aligner la somme et les notes
+        run: |
+          gh release download "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" -p "$PUBLISHED_NAME" -p SHA256SUMS
+          test "$(dpkg-deb -f "$PUBLISHED_NAME" Version)" = '1.0.6~beta.1-1'
+          expected=$(awk -v name="$ORIGINAL_NAME" '$2 == name { print $1 }' SHA256SUMS)
+          actual=$(sha256sum "$PUBLISHED_NAME" | cut -d ' ' -f1)
+          test -n "$expected" && test "$actual" = "$expected"
+          sha256sum "$PUBLISHED_NAME" > SHA256SUMS
+          sha256sum --check SHA256SUMS
+          gh release view "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --json body --jq .body > release-notes.md
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          notes = Path("release-notes.md")
+          notes.write_text(notes.read_text().replace(os.environ["ORIGINAL_NAME"], os.environ["PUBLISHED_NAME"]))
+          PY
+          gh release upload "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --clobber SHA256SUMS
+          gh release edit "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" --notes-file release-notes.md
+          mkdir verification
+          gh release download "$RELEASE_TAG" -R "$GITHUB_REPOSITORY" -p SHA256SUMS --dir verification
+          cmp SHA256SUMS verification/SHA256SUMS
