@@ -58,7 +58,7 @@ jobs:
             runuser -u validation -- ssh-keygen -q -t ed25519 -N '' -f /home/validation/.ssh/id_ed25519
             runuser -u validation -- cp /home/validation/.ssh/id_ed25519.pub /home/validation/.ssh/authorized_keys
             /usr/sbin/sshd -o ListenAddress=127.0.0.1 -o UsePAM=yes
-            runuser -u validation -- ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new validation@127.0.0.1 true
+            runuser -u validation -- ssh -n -o BatchMode=yes -o StrictHostKeyChecking=accept-new validation@127.0.0.1 true
           fi
           cd /tmp
           timeout --kill-after=8 150 runuser -u validation -- \
