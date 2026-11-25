@@ -3,7 +3,6 @@ set -euo pipefail
 sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ntfs-3g samba
 for fs in EXT4 NTFS; do
   dir="/media/validation/MIRIVUE_$fs"
-  sudo install -d "$dir"
   disk="/dev/disk/by-label/MIRIVUE_$fs"
   mounted_at=$(findmnt --noheadings --output TARGET --source "$(readlink -f "$disk")" || true)
   if [[ "$mounted_at" == "$dir" && "$fs" != NTFS ]]; then
@@ -11,6 +10,7 @@ for fs in EXT4 NTFS; do
     continue
   fi
   if [[ -n "$mounted_at" ]]; then sudo umount "$disk"; fi
+  sudo install -d "$dir"
   if [[ "$fs" == NTFS ]]; then
     # The test NTFS volume belongs to one user. Make its trash visible to GVfs.
     options="uid=$(id -u),gid=$(id -g),dmask=0077,fmask=0177,x-gvfs-trash"
