@@ -18,6 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: a3c77e22e2ed3b2187dfc6a1bcdc0af8a0c564eb
           persist-credentials: false
       - name: Construire et qualifier le paquet
         env:
@@ -34,9 +35,7 @@ jobs:
           dpkg-buildpackage --build=binary --no-sign
           apt-get install -y --no-install-recommends /build/mirivue-gnome_*.deb gvfs gvfs-backends
           test "$(mirivue-gnome --version)" = 1.0.6-rc.1
-          curl --fail --silent --show-error --location --retry 3 \
-            -o /tmp/check_linux_integrations.py \
-            https://raw.githubusercontent.com/denamiel/Mirivue-gnome/e46e1f87f7939995b0b7d3949d3ab3fe5a9a94fa/debian/check-linux-integrations.py
+          cp debian/check-linux-integrations.py /tmp/check_linux_integrations.py
           useradd --create-home --shell /bin/bash validation
           printf '%s\n' 'validation ALL=(root) NOPASSWD: /usr/sbin/iptables' > /etc/sudoers.d/validation
           chmod 0440 /etc/sudoers.d/validation
