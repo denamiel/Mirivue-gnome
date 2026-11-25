@@ -1,3 +1,10 @@
+mirivue-gnome (1.0.6-1) unstable; urgency=medium
+
+  * Version stable après qualification de la mise à niveau, des sessions
+    GNOME Wayland et de l’intégrité des transferts interrompus.
+
+ -- Mirivue contributors <346808704+denamiel@users.noreply.github.com>  Wed, 25 Nov 2026 19:27:00 +0100
+
 mirivue-gnome (1.0.6~rc.1-1) unstable; urgency=medium
 
   * Préparer la version candidate et vérifier la mise à niveau depuis la bêta.

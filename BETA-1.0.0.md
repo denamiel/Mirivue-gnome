@@ -1,4 +1,6 @@
-# Mirivue GNOME 1.0.6-rc.1
+# Qualification de Mirivue GNOME 1.0.6
+
+Cette page décrit le candidat `1.0.6-rc.1`. La version stable `1.0.6` lui succède. Pour télécharger les paquets, consulter les [Releases GitHub](https://github.com/denamiel/Mirivue-gnome/releases).
 
 ## Numérotation
 
