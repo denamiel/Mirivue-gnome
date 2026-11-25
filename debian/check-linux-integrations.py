@@ -100,9 +100,7 @@ class Gnome:
         manager.undo()
         assert file.read_bytes() == b"Mirivue\n"
 
-    def download(self, url, destination):
-        from mirivue_gtk4.core import gio_backend
-
+    def mount_share(self, url):
         remote = self.gio.File.new_for_uri(url)
         loop = self.glib.MainLoop()
         operation = self.gio.MountOperation()
@@ -122,6 +120,12 @@ class Gnome:
         loop.run()
         if errors:
             raise errors[0]
+        return remote
+
+    def download(self, url, destination):
+        from mirivue_gtk4.core import gio_backend
+
+        remote = self.mount_share(url)
         entries = gio_backend.browse(remote)
         child, = [entry[1] for entry in entries if entry[1].get_basename() == "exemple.txt"]
         gio_backend.transfer([child], self.gio.File.new_for_path(str(destination)))
