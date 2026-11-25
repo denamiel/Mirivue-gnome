@@ -23,7 +23,7 @@ jobs:
         env:
           PROTOCOL: ${{ matrix.protocol }}
         run: |
-          docker run --rm --cap-add=NET_ADMIN -e PROTOCOL -v "$PWD:/input:ro" debian:13 bash -euo pipefail -s <<'TEST'
+          docker run --rm -i --cap-add=NET_ADMIN -e PROTOCOL -v "$PWD:/input:ro" debian:13 bash -euo pipefail -s <<'TEST'
           export DEBIAN_FRONTEND=noninteractive
           apt-get update
           apt-get install -y --no-install-recommends ca-certificates curl build-essential devscripts equivs sudo dbus-x11 xvfb xauth samba openssh-server iptables
@@ -39,6 +39,7 @@ jobs:
             https://raw.githubusercontent.com/denamiel/Mirivue-gnome/e46e1f87f7939995b0b7d3949d3ab3fe5a9a94fa/debian/check-linux-integrations.py
           useradd --create-home --shell /bin/bash validation
           printf '%s\n' 'validation ALL=(root) NOPASSWD: /usr/sbin/iptables' > /etc/sudoers.d/validation
+          chmod 0440 /etc/sudoers.d/validation
           install -o validation -g validation -d /tmp/validation-smb /home/validation/validation-ssh
           if [[ "$PROTOCOL" = smb ]]; then
             cat > /etc/samba/smb.conf <<'SMB'
